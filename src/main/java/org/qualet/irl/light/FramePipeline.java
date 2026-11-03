@@ -104,7 +104,7 @@ public final class FramePipeline
 
         Minecraft mc = Minecraft.getInstance();
         ClientLevel world = mc.level;
-        Camera camera = mc.gameRenderer.getMainCamera();
+        Camera camera = mc.gameRenderer.mainCamera();
         Vec3 cameraPos = camera != null ? camera.position() : Vec3.ZERO;
         // Forward look vector for the shadow baker's behind-camera light cull.
         Vec3 cameraForward = camera != null ? Vec3.directionFromRotation(camera.xRot(), camera.yRot()) : null;
