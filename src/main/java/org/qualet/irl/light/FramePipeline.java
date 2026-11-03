@@ -160,7 +160,7 @@ public final class FramePipeline
         flushPending = false;
 
         Minecraft mc = Minecraft.getInstance();
-        Camera camera = mc.gameRenderer.getMainCamera();
+        Camera camera = mc.gameRenderer.mainCamera();
         Vec3 p = camera != null ? camera.position() : Vec3.ZERO;
         LightRegistry.flush(p.x, p.y, p.z);
     }
