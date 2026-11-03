@@ -1,6 +1,5 @@
 package org.qualet.irl.light.shadow;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -188,9 +187,9 @@ public final class PointShadowPyramid
 
         // pass 0: depth atlas -> pyramid lod 0, all dirty blocks tier by tier
         // (blocks are tier-contiguous), one barrier for the whole pass
-        GlStateManager._glUseProgram(progCube);
+        GL20.glUseProgram(progCube);
         GL20.glUniform1i(uCubeSrc, unit);
-        GlStateManager._bindTexture(depthTex);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, depthTex);
         for (int t = 0; t < 3; t++)
         {
             int base = PointDepthAtlas.tierFaceSizePx(t) / 2;
@@ -221,7 +220,7 @@ public final class PointShadowPyramid
         // passes 1..levels-1, tier by tier: one image bind + one barrier per
         // LEVEL, all the tier's dirty blocks (same barrier count as the three
         // per-tier flushes of the cube-array layout)
-        GlStateManager._glUseProgram(progMip);
+        GL20.glUseProgram(progMip);
         GL20.glUniform1i(uMipSrc, unit);
         for (int t = 0; t < 3; t++)
         {
@@ -259,8 +258,8 @@ public final class PointShadowPyramid
 
         // --- restore ---
         GL11.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, prevArr);
-        GlStateManager._bindTexture(prevTex);
-        GlStateManager._glUseProgram(prevProgram);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
+        GL20.glUseProgram(prevProgram);
         if (prevImgName == 0)
         {
             GL42.glBindImageTexture(0, 0, 0, false, 0, GL15.GL_READ_ONLY, GL30.GL_R32F);
