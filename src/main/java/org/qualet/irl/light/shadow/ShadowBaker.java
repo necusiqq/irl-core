@@ -5,10 +5,6 @@ import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.qualet.irl.light.LightRegistry;
@@ -17,6 +13,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Shadow bake driver. Collects nearby occluders (world entities) and, for each
@@ -91,7 +91,7 @@ public final class ShadowBaker
     private static final ShadowOverlayCache.Member[] spotMembersBySlot =
         new ShadowOverlayCache.Member[MAX_OCCLUDERS];
     private static final boolean NO_OVERLAY_REUSE = Boolean.getBoolean("irlite.noOverlayReuse");
-    private static ClientWorld overlayWorld;
+    private static ClientLevel overlayWorld;
     /** Squared camera distance of each kept occluder's center — the
      *  replacement metric of the nearest-N policy (OPEN-2, see {@link #put}). */
     private static final float[] odist2 = new float[MAX_OCCLUDERS];
@@ -418,7 +418,7 @@ public final class ShadowBaker
     private ShadowBaker()
     {}
 
-    public static void bake(ClientWorld world, Vec3d cameraPos, Vec3d cameraForward, float tickDelta)
+    public static void bake(ClientLevel world, Vec3 cameraPos, Vec3 cameraForward, float tickDelta)
     {
         try
         {
@@ -433,7 +433,7 @@ public final class ShadowBaker
         }
     }
 
-    private static void bakeProfiled(ClientWorld world, Vec3d cameraPos, Vec3d cameraForward, float tickDelta)
+    private static void bakeProfiled(ClientLevel world, Vec3 cameraPos, Vec3 cameraForward, float tickDelta)
     {
         if (!PROFILE)
         {
@@ -460,7 +460,7 @@ public final class ShadowBaker
         }
     }
 
-    private static void bakeInner(ClientWorld world, Vec3d cameraPos, Vec3d cameraForward, float tickDelta)
+    private static void bakeInner(ClientLevel world, Vec3 cameraPos, Vec3 cameraForward, float tickDelta)
     {
         if (overlayWorld != world)
         {
@@ -602,7 +602,7 @@ public final class ShadowBaker
             float dy = LightRegistry.getDirY(i);
             float dz = LightRegistry.getDirZ(i);
             float cosOuter = LightRegistry.getCosOuter(i);
-            float coneTheta = (float) Math.acos(MathHelper.clamp(cosOuter, -1f, 1f));
+            float coneTheta = (float) Math.acos(Mth.clamp(cosOuter, -1f, 1f));
             float dlen = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
             boolean cone = dlen > 1e-4f;
             float ndx = cone ? dx / dlen : 0f;
@@ -2033,7 +2033,7 @@ public final class ShadowBaker
      *  feature is off. Backed by the identity-keyed {@link BlockShadowCache}
      *  (O(1) on a hit; recollects on light-move, radius change, or a block change
      *  in range). */
-    private static List<BlockShadowEntry> collectBlocks(long id, ClientWorld world, float lx, float ly, float lz, float range)
+    private static List<BlockShadowEntry> collectBlocks(long id, ClientLevel world, float lx, float ly, float lz, float range)
     {
         if (!ShadowEngine.config().shadowBlocks() || world == null)
         {
@@ -2479,8 +2479,8 @@ public final class ShadowBaker
         }
         float dist = (float) Math.sqrt(d2);
         float cosPhi = (vx * dirX + vy * dirY + vz * dirZ) / dist; // dir is unit
-        float phi = (float) Math.acos(MathHelper.clamp(cosPhi, -1f, 1f));
-        float alpha = (float) Math.asin(MathHelper.clamp(r / dist, 0f, 1f));
+        float phi = (float) Math.acos(Mth.clamp(cosPhi, -1f, 1f));
+        float alpha = (float) Math.asin(Mth.clamp(r / dist, 0f, 1f));
         return phi - alpha <= coneTheta + CONE_ANGLE_MARGIN;
     }
 
@@ -2523,7 +2523,7 @@ public final class ShadowBaker
         @Override
         public void emitFromBox(Object caster, int type, boolean isStatic,
                                 double interpX, double interpY, double interpZ,
-                                Box box, float scale, long staticHash)
+                                AABB box, float scale, long staticHash)
         {
             // Box edge lengths via stable public fields (yarn renamed getXLength()
             // -> getLengthX() after 1.20.1; fields are identical across versions).
@@ -2620,7 +2620,7 @@ public final class ShadowBaker
         farthestOccDist2 = odist2[farthestOccIdx];
     }
 
-    private static void collect(ClientWorld world, Vec3d cameraPos, float tickDelta)
+    private static void collect(ClientLevel world, Vec3 cameraPos, float tickDelta)
     {
         // Camera captured BEFORE the source emits: put() ranks every occluder
         // by squared camera distance for the bounded nearest-N policy.

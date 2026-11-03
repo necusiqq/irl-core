@@ -1,24 +1,14 @@
 package org.qualet.irl.light.shadow;
 
+import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectIterator;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.block.BlockRenderManager;
-import net.minecraft.client.render.model.BlockModelPart;
-import net.minecraft.client.render.model.BlockStateModel;
-import net.minecraft.client.texture.AbstractTexture;
-import net.minecraft.client.texture.GlTexture;
-import net.minecraft.client.texture.SpriteAtlasTexture;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.random.Random;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
@@ -30,6 +20,16 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+import net.minecraft.client.renderer.block.model.BlockModelPart;
+import net.minecraft.client.renderer.block.model.BlockStateModel;
+import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Bakes spot/point shadow depth maps into the per-light atlas tiles / cube faces.
@@ -511,7 +511,7 @@ public final class ShadowRenderer
     private static final Long2ObjectOpenHashMap<List<BlockShadowEntry>> cutoutList = new Long2ObjectOpenHashMap<>();
     private static final Long2IntOpenHashMap cutoutVboId = new Long2IntOpenHashMap();
     private static final Long2IntOpenHashMap cutoutVertCount = new Long2IntOpenHashMap();
-    private static final Random cutoutRandom = Random.create();
+    private static final RandomSource cutoutRandom = RandomSource.create();
     private static boolean cutoutErrorLogged = false;
 
     private static boolean blockErrorLogged = false;
@@ -639,7 +639,7 @@ public final class ShadowRenderer
             BlockShadowEntry e = blocks.get(i);
             if (e != null && e.shape != null)
             {
-                e.shape.forEachBox((a, b, c, d, f, g) -> boxes[0]++);
+                e.shape.forAllBoxes((a, b, c, d, f, g) -> boxes[0]++);
             }
         }
         int boxCount = boxes[0];
@@ -670,7 +670,7 @@ public final class ShadowRenderer
                 // eye's A. Mirrors main QuadBoxConsumer x1 = (float)(ox - originX + minX).
                 final int ox = e.pos.getX(), oy = e.pos.getY(), oz = e.pos.getZ();
                 final double ax = currentOriginX, ay = currentOriginY, az = currentOriginZ;
-                e.shape.forEachBox((minX, minY, minZ, maxX, maxY, maxZ) ->
+                e.shape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) ->
                     emitBox(fb,
                         (float) (ox - ax + minX), (float) (oy - ay + minY), (float) (oz - az + minZ),
                         (float) (ox - ax + maxX), (float) (oy - ay + maxY), (float) (oz - az + maxZ)));
@@ -841,9 +841,9 @@ public final class ShadowRenderer
      *  atlas UVs. Returns the vertex count (0 if there is no cutout geometry). */
     private static int buildCutoutVbo(long id, List<BlockShadowEntry> blocks)
     {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        ClientWorld world = mc != null ? mc.world : null;
-        BlockRenderManager brm = mc != null ? mc.getBlockRenderManager() : null;
+        Minecraft mc = Minecraft.getInstance();
+        ClientLevel world = mc != null ? mc.level : null;
+        BlockRenderDispatcher brm = mc != null ? mc.getBlockRenderer() : null;
         if (world == null || brm == null)
         {
             releaseCutoutVbo(id);
@@ -933,7 +933,7 @@ public final class ShadowRenderer
 
     /**
      * Tessellate one cutout block as world-space POSITION+UV triangles (5 floats
-     * per vertex) through MC's real {@link BlockRenderManager#renderBlock} into a
+     * per vertex) through MC's real {@link BlockRenderDispatcher#renderBatched} into a
      * recording {@link Capture} consumer, then triangulate the captured quads.
      * The 1.21.4 line did this straight into a {@code BufferBuilder}; on 1.21.11
      * that immediate path is gone, so the tessellation is captured to a flat float
@@ -941,8 +941,8 @@ public final class ShadowRenderer
      * alpha-discarding program. Empty array on any failure (no shadow for that
      * block, never a crashed bake).
      */
-    private static float[] captureCutoutBlockTris(ClientWorld world, BlockRenderManager brm,
-                                                  BlockPos pos, BlockState state, Random random)
+    private static float[] captureCutoutBlockTris(ClientLevel world, BlockRenderDispatcher brm,
+                                                  BlockPos pos, BlockState state, RandomSource random)
     {
         if (world == null || brm == null || state == null)
         {
@@ -950,19 +950,19 @@ public final class ShadowRenderer
         }
         try
         {
-            BlockStateModel model = brm.getModel(state);
+            BlockStateModel model = brm.getBlockModel(state);
             if (model == null)
             {
                 return EMPTY_TRIS;
             }
-            random.setSeed(state.getRenderingSeed(pos));
-            List<BlockModelPart> parts = model.getParts(random);
+            random.setSeed(state.getSeed(pos));
+            List<BlockModelPart> parts = model.collectParts(random);
             if (parts == null || parts.isEmpty())
             {
                 return EMPTY_TRIS;
             }
 
-            MatrixStack ms = new MatrixStack();
+            PoseStack ms = new PoseStack();
             // Pre-translate to the anchor-relative block origin (world - A): the block
             // renderer only applies the block's model offset, never its world position.
             // (int pos) - (double anchor A) -> MatrixStack.translate(double), narrowed
@@ -970,7 +970,7 @@ public final class ShadowRenderer
             ms.translate(pos.getX() - currentOriginX, pos.getY() - currentOriginY, pos.getZ() - currentOriginZ);
 
             CUTOUT_CAPTURE.reset();
-            brm.renderBlock(state, pos, world, ms, CUTOUT_CAPTURE, true, parts);
+            brm.renderBatched(state, pos, world, ms, CUTOUT_CAPTURE, true, parts);
             return CUTOUT_CAPTURE.toTris();
         }
         catch (Throwable t)
@@ -988,20 +988,20 @@ public final class ShadowRenderer
     {
         try
         {
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             if (mc == null)
             {
                 return 0;
             }
-            AbstractTexture tex = mc.getTextureManager().getTexture(SpriteAtlasTexture.BLOCK_ATLAS_TEXTURE);
+            AbstractTexture tex = mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS);
             if (tex == null)
             {
                 return 0;
             }
-            com.mojang.blaze3d.textures.GpuTexture gt = tex.getGlTexture();
+            com.mojang.blaze3d.textures.GpuTexture gt = tex.getTexture();
             if (gt instanceof GlTexture)
             {
-                return ((GlTexture) gt).getGlId();
+                return ((GlTexture) gt).glId();
             }
             return 0;
         }
@@ -1231,9 +1231,9 @@ public final class ShadowRenderer
     /**
      * Records committed vertices as (x, y, z, u, v) and triangulates the implied
      * QUADS (every 4 vertices -> 2 triangles). Positions arrive already transformed
-     * by {@link BlockRenderManager#renderBlock}'s matrix, so no matrix is applied
+     * by {@link BlockRenderDispatcher#renderBatched}'s matrix, so no matrix is applied
      * here; only POSITION + UV are kept, every other element is dropped. A vertex is
-     * committed when the next {@link #vertex(float, float, float)} starts, or when
+     * committed when the next {@link #addVertex(float, float, float)} starts, or when
      * {@link #toTris} flushes the last. This is the block-cutout subset of the
      * per-mod capture queue (entities are captured mod-side and arrive as POSITION
      * float[] through the {@link RawOccluderBatch} seam instead).
@@ -1302,7 +1302,7 @@ public final class ShadowRenderer
         }
 
         @Override
-        public VertexConsumer vertex(float x, float y, float z)
+        public VertexConsumer addVertex(float x, float y, float z)
         {
             commit();
             cx = x; cy = y; cz = z; cu = 0f; cv = 0f;
@@ -1311,44 +1311,44 @@ public final class ShadowRenderer
         }
 
         @Override
-        public VertexConsumer texture(float u, float v)
+        public VertexConsumer setUv(float u, float v)
         {
             cu = u; cv = v;
             return this;
         }
 
         @Override
-        public VertexConsumer color(int red, int green, int blue, int alpha)
+        public VertexConsumer setColor(int red, int green, int blue, int alpha)
         {
             return this;
         }
 
         @Override
-        public VertexConsumer color(int argb)
+        public VertexConsumer setColor(int argb)
         {
             return this;
         }
 
         @Override
-        public VertexConsumer overlay(int u, int v)
+        public VertexConsumer setUv1(int u, int v)
         {
             return this;
         }
 
         @Override
-        public VertexConsumer light(int u, int v)
+        public VertexConsumer setUv2(int u, int v)
         {
             return this;
         }
 
         @Override
-        public VertexConsumer normal(float x, float y, float z)
+        public VertexConsumer setNormal(float x, float y, float z)
         {
             return this;
         }
 
         @Override
-        public VertexConsumer lineWidth(float width)
+        public VertexConsumer setLineWidth(float width)
         {
             return this;
         }

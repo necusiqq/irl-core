@@ -1,7 +1,7 @@
 package org.qualet.irl.light.shadow;
 
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * The frozen shadow seam: the ONLY thing a shadow variant supplies. Everything
@@ -32,7 +32,7 @@ public interface ShadowCasterSource
      * try/catch) lives INSIDE this impl; a throwing collect for one caster degrades
      * to "that caster is absent", never aborts the bake.
      */
-    void collect(ClientWorld world, Vec3d camPos, float tickDelta, OccluderSink sink);
+    void collect(ClientLevel world, Vec3 camPos, float tickDelta, OccluderSink sink);
 
     /** Optional complete silhouette contract, sampled once for each kept dynamic
      * caster after collect and before any draw. Unsupported poses, resource state,

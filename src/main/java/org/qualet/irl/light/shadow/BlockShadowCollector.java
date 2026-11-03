@@ -1,18 +1,17 @@
 package org.qualet.irl.light.shadow;
 
-import net.minecraft.block.BlockRenderType;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.BlockRenderLayer;
-import net.minecraft.client.render.BlockRenderLayers;
-import net.minecraft.client.render.block.BlockModels;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.BlockView;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
+import net.minecraft.client.renderer.block.BlockModelShaper;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * Walks the bbox of a local light and gathers every block whose shape is
@@ -38,7 +37,7 @@ public final class BlockShadowCollector
     {
     }
 
-    public static List<BlockShadowEntry> collectForLight(ClientWorld world,
+    public static List<BlockShadowEntry> collectForLight(ClientLevel world,
                                                          float lx, float ly, float lz,
                                                          float radius,
                                                          int hostX, int hostY, int hostZ)
@@ -57,7 +56,7 @@ public final class BlockShadowCollector
         int maxZ = (int) Math.floor(lz + radius);
 
         float r2 = radius * radius;
-        BlockPos.Mutable mut = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos mut = new BlockPos.MutableBlockPos();
 
         for (int x = minX; x <= maxX; x++)
         {
@@ -87,7 +86,7 @@ public final class BlockShadowCollector
                     // the host cell (floor of the light position) so emitters
                     // ELSEWHERE in range still cast shadows normally. Same idea
                     // as the INVISIBLE ModelBlock skip just below.
-                    if (x == hostX && y == hostY && z == hostZ && state.getLuminance() > 0) continue;
+                    if (x == hostX && y == hostY && z == hostZ && state.getLightEmission() > 0) continue;
 
                     // BlockRenderType.INVISIBLE means the block draws nothing
                     // through the vanilla render path - ModelBlock, barrier,
@@ -97,7 +96,7 @@ public final class BlockShadowCollector
                     // back to VoxelShapes.fullCube because Block has no
                     // override and collision is empty), trapping the light
                     // inside its own shadow map.
-                    if (state.getRenderType() == BlockRenderType.INVISIBLE) continue;
+                    if (state.getRenderShape() == RenderShape.INVISIBLE) continue;
 
                     // Cutout blocks (doors with glass, iron bars, trapdoors,
                     // ladders, leaves) are baked from their textured BakedModel
@@ -113,8 +112,8 @@ public final class BlockShadowCollector
                     boolean cutout;
                     try
                     {
-                        BlockRenderLayer layer = BlockRenderLayers.getBlockLayer(state);
-                        cutout = layer == BlockRenderLayer.CUTOUT;
+                        ChunkSectionLayer layer = ItemBlockRenderTypes.getChunkRenderType(state);
+                        cutout = layer == ChunkSectionLayer.CUTOUT;
                     }
                     catch (Throwable t)
                     {
@@ -122,21 +121,21 @@ public final class BlockShadowCollector
                     }
                     if (cutout)
                     {
-                        out.add(new BlockShadowEntry(mut.toImmutable(), null, true));
+                        out.add(new BlockShadowEntry(mut.immutable(), null, true));
                         continue;
                     }
 
                     VoxelShape shape;
                     try
                     {
-                        shape = state.getCullingShape();
+                        shape = state.getOcclusionShape();
                         if (shape == null || shape.isEmpty())
                         {
                             shape = state.getCollisionShape(world, mut);
                         }
                         if (shape == null || shape.isEmpty())
                         {
-                            shape = state.getOutlineShape(world, mut);
+                            shape = state.getShape(world, mut);
                         }
                     }
                     catch (Throwable t)
@@ -145,7 +144,7 @@ public final class BlockShadowCollector
                     }
                     if (shape == null || shape.isEmpty()) continue;
 
-                    out.add(new BlockShadowEntry(mut.toImmutable(), shape, false));
+                    out.add(new BlockShadowEntry(mut.immutable(), shape, false));
                 }
             }
         }
@@ -173,7 +172,7 @@ public final class BlockShadowCollector
      * doubt (cutout models that differ, resolution throwing) this returns
      * false — a wasted rebake is cheap, a stale shadow is a visible bug.
      */
-    public static boolean sameSilhouette(BlockView world, BlockPos pos,
+    public static boolean sameSilhouette(BlockGetter world, BlockPos pos,
                                          BlockState oldState, BlockState newState)
     {
         try
@@ -194,7 +193,7 @@ public final class BlockShadowCollector
             // emits, so a luminance flip (redstone lamp) changes that lamp's
             // list even with an identical shape. We can't see host cells from
             // here, so treat any flip as a real change.
-            if ((oldState.getLuminance() > 0) != (newState.getLuminance() > 0))
+            if ((oldState.getLightEmission() > 0) != (newState.getLightEmission() > 0))
             {
                 return false;
             }
@@ -205,14 +204,14 @@ public final class BlockShadowCollector
                 // identically; distinct instances may differ — assume they do.
                 // 1.21.11: BlockModels.getModel returns a BlockStateModel (was
                 // BakedModel pre-1.21.5); the identity compare is unaffected.
-                BlockModels models = MinecraftClient.getInstance().getBakedModelManager().getBlockModels();
-                return models.getModel(oldState) == models.getModel(newState);
+                BlockModelShaper models = Minecraft.getInstance().getModelManager().getBlockModelShaper();
+                return models.getBlockModel(oldState) == models.getBlockModel(newState);
             }
             VoxelShape a = shapeOut[0], b = shapeOut[1];
             // Most blocks serve shapes from per-state static caches (full cubes
             // are one singleton), so identity catches the common case; fall
             // back to comparing the AABB decomposition the bake actually draws.
-            return a == b || a.getBoundingBoxes().equals(b.getBoundingBoxes());
+            return a == b || a.toAabbs().equals(b.toAabbs());
         }
         catch (Throwable t)
         {
@@ -222,10 +221,10 @@ public final class BlockShadowCollector
 
     /** Classify one state the way collectForLight would treat it; for
      *  KIND_SHAPE the resolved shape is left in {@code shapeOut[slot]}. */
-    private static int casterKind(BlockView world, BlockPos pos, BlockState state,
+    private static int casterKind(BlockGetter world, BlockPos pos, BlockState state,
                                   VoxelShape[] shapeOut, int slot)
     {
-        if (state.isAir() || state.getRenderType() == BlockRenderType.INVISIBLE)
+        if (state.isAir() || state.getRenderShape() == RenderShape.INVISIBLE)
         {
             return KIND_NONE;
         }
@@ -234,8 +233,8 @@ public final class BlockShadowCollector
             // 1.21.11 cutout classification (see collectForLight): the 1.21.4
             // RenderLayers.getBlockLayer + getCutout()/getCutoutMipped() pair
             // collapses to BlockRenderLayers.getBlockLayer == BlockRenderLayer.CUTOUT.
-            BlockRenderLayer layer = BlockRenderLayers.getBlockLayer(state);
-            if (layer == BlockRenderLayer.CUTOUT)
+            ChunkSectionLayer layer = ItemBlockRenderTypes.getChunkRenderType(state);
+            if (layer == ChunkSectionLayer.CUTOUT)
             {
                 return KIND_CUTOUT;
             }
@@ -244,14 +243,14 @@ public final class BlockShadowCollector
         {
             // collectForLight treats a throwing layer lookup as non-cutout too
         }
-        VoxelShape shape = state.getCullingShape();
+        VoxelShape shape = state.getOcclusionShape();
         if (shape == null || shape.isEmpty())
         {
             shape = state.getCollisionShape(world, pos);
         }
         if (shape == null || shape.isEmpty())
         {
-            shape = state.getOutlineShape(world, pos);
+            shape = state.getShape(world, pos);
         }
         if (shape == null || shape.isEmpty())
         {

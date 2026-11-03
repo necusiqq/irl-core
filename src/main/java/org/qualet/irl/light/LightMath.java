@@ -1,6 +1,6 @@
 package org.qualet.irl.light;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
@@ -116,16 +116,16 @@ public final class LightMath
     }
 
     /**
-     * Normalizes {@code (x, y, z)} into a fresh {@link Vec3d}, falling back to the
+     * Normalizes {@code (x, y, z)} into a fresh {@link Vec3}, falling back to the
      * given fallback when the input is degenerate.
      */
-    public static Vec3d normalizeDir(double x, double y, double z, double fx, double fy, double fz)
+    public static Vec3 normalizeDir(double x, double y, double z, double fx, double fy, double fz)
     {
         double len = Math.sqrt(x * x + y * y + z * z);
         if (len > DEGENERATE)
         {
-            return new Vec3d(x / len, y / len, z / len);
+            return new Vec3(x / len, y / len, z / len);
         }
-        return new Vec3d(fx, fy, fz);
+        return new Vec3(fx, fy, fz);
     }
 }

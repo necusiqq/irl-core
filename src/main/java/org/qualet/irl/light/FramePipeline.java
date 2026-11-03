@@ -1,13 +1,13 @@
 package org.qualet.irl.light;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.qualet.irl.light.shadow.ShadowBaker;
 
 import java.util.function.BooleanSupplier;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * The per-frame light orchestration. {@link #frame} runs at renderWorld HEAD,
@@ -37,7 +37,7 @@ public final class FramePipeline
     @FunctionalInterface
     public interface LightSource
     {
-        void collect(ClientWorld world, Vec3d cameraPos, float tickDelta);
+        void collect(ClientLevel world, Vec3 cameraPos, float tickDelta);
     }
 
     /** True while the light pipeline is parked because shaders are off; the
@@ -102,12 +102,12 @@ public final class FramePipeline
 
         dormant = false;
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        ClientWorld world = mc.world;
-        Camera camera = mc.gameRenderer.getCamera();
-        Vec3d cameraPos = camera != null ? camera.getCameraPos() : Vec3d.ZERO;
+        Minecraft mc = Minecraft.getInstance();
+        ClientLevel world = mc.level;
+        Camera camera = mc.gameRenderer.getMainCamera();
+        Vec3 cameraPos = camera != null ? camera.position() : Vec3.ZERO;
         // Forward look vector for the shadow baker's behind-camera light cull.
-        Vec3d cameraForward = camera != null ? Vec3d.fromPolar(camera.getPitch(), camera.getYaw()) : null;
+        Vec3 cameraForward = camera != null ? Vec3.directionFromRotation(camera.xRot(), camera.yRot()) : null;
 
         source.collect(world, cameraPos, tickDelta);
 
@@ -126,7 +126,7 @@ public final class FramePipeline
             // configure() dropped its world parameter -> configure(Camera, Entity).
             // MinecraftClient.getEntityRenderDispatcher() kept its name but now returns
             // the renamed EntityRenderManager.
-            mc.getEntityRenderDispatcher().configure(camera, mc.getCameraEntity());
+            mc.getEntityRenderDispatcher().prepare(camera, mc.getCameraEntity());
         }
         ShadowBaker.bake(world, cameraPos, cameraForward, tickDelta);
 
@@ -159,9 +159,9 @@ public final class FramePipeline
         }
         flushPending = false;
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        Camera camera = mc.gameRenderer.getCamera();
-        Vec3d p = camera != null ? camera.getCameraPos() : Vec3d.ZERO;
+        Minecraft mc = Minecraft.getInstance();
+        Camera camera = mc.gameRenderer.getMainCamera();
+        Vec3 p = camera != null ? camera.position() : Vec3.ZERO;
         LightRegistry.flush(p.x, p.y, p.z);
     }
 

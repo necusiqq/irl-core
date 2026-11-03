@@ -6,12 +6,11 @@ import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectIterator;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.BlockView;
-
 import java.util.List;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Per-light cache of world-block shadow casters, keyed by LIGHT IDENTITY
@@ -88,7 +87,7 @@ public final class BlockShadowCache
      *  crosses into another snapped or host cell (and the cached list instance
      *  stays stable in between, which the VBO cache keys on). Blocks the padding
      *  pulls in past the light's range are clipped by the bake far plane. */
-    public static List<BlockShadowEntry> getOrCompute(long id, ClientWorld world,
+    public static List<BlockShadowEntry> getOrCompute(long id, ClientLevel world,
                                                       float lx, float ly, float lz, float radius)
     {
         float cx = Math.round(lx);
@@ -154,7 +153,7 @@ public final class BlockShadowCache
      * after the section index confirms a lamp is actually nearby, so the
      * common far-away edit still costs one hash lookup.
      */
-    public static boolean invalidateChange(BlockView world, BlockPos pos,
+    public static boolean invalidateChange(BlockGetter world, BlockPos pos,
                                            BlockState oldState, BlockState newState)
     {
         LongOpenHashSet ids = idsCovering(pos);

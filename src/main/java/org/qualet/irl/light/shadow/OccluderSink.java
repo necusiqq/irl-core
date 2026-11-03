@@ -1,6 +1,6 @@
 package org.qualet.irl.light.shadow;
 
-import net.minecraft.util.math.Box;
+import net.minecraft.world.phys.AABB;
 
 /**
  * Allocation-free writer for the orchestration's faceless bounded occluder
@@ -43,7 +43,7 @@ public interface OccluderSink
      */
     void emitFromBox(Object caster, int type, boolean isStatic,
                      double interpX, double interpY, double interpZ,
-                     Box box, float scale, long staticHash);
+                     AABB box, float scale, long staticHash);
 
     /**
      * Raw escape hatch for a NON-box caster: append with a pre-computed sphere.
