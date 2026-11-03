@@ -1,6 +1,5 @@
 package org.qualet.irl.light.shadow;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -308,11 +307,11 @@ public final class SpotShadowEvsm
                 // reduce -> scratch (raw moments, scratch-local at (0,0))
                 if (lod == 0)
                 {
-                    GlStateManager._glUseProgram(progConvert);
+                    GL20.glUseProgram(progConvert);
                     GL20.glUniform1i(uCvSrc, unit);
                     GL20.glUniform1f(uCvFar, tileFar[tile]);
                     GL20.glUniform1i(uCvStep, 1 << shift);
-                    GlStateManager._bindTexture(depthTex);
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, depthTex);
                     GL42.glBindImageTexture(0, scratchId, 0, false, 0, GL15.GL_WRITE_ONLY, GL30.GL_RGBA32F);
                     GL20.glUniform2i(uCvSrcOrigin, pixX + (sx0 << shift), pixY + (sy0 << shift));
                     GL20.glUniform2i(uCvDstOrigin, 0, 0);
@@ -320,9 +319,9 @@ public final class SpotShadowEvsm
                 }
                 else
                 {
-                    GlStateManager._glUseProgram(progMip);
+                    GL20.glUseProgram(progMip);
                     GL20.glUniform1i(uMpSrc, unit);
-                    GlStateManager._bindTexture(texId);
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
                     GL20.glUniform1i(uMpSrcLod, lod - 1);
                     GL42.glBindImageTexture(0, scratchId, 0, false, 0, GL15.GL_WRITE_ONLY, GL30.GL_RGBA32F);
                     GL20.glUniform2i(uMpSrcOrigin, (regOrigX << 1) + (sx0 << 1), (regOrigY << 1) + (sy0 << 1));
@@ -335,11 +334,11 @@ public final class SpotShadowEvsm
                 // H: scratch -> temp over the whole S rect (edge H outputs whose
                 // kernel clamps at an interior S edge are never consumed: V only
                 // reads columns of W, inset >= 2 from S's x-edges by construction)
-                GlStateManager._glUseProgram(progBlur);
+                GL20.glUseProgram(progBlur);
                 GL20.glUniform1i(uBlSrc, unit);
                 GL20.glUniform1i(uBlSrcLod, 0);
                 GL20.glUniform2i(uBlClampMax, sW - 1, sH - 1);
-                GlStateManager._bindTexture(scratchId);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, scratchId);
                 GL42.glBindImageTexture(0, tempId, 0, false, 0, GL15.GL_WRITE_ONLY, GL30.GL_RGBA32F);
                 GL20.glUniform1i(uBlHorizontal, 1);
                 GL20.glUniform2i(uBlSrcOrigin, 0, 0);
@@ -349,7 +348,7 @@ public final class SpotShadowEvsm
                 GL42.glMemoryBarrier(GL42.GL_TEXTURE_FETCH_BARRIER_BIT);
 
                 // V: temp -> EVSM mip, write rect W only (absolute dst origin)
-                GlStateManager._bindTexture(tempId);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, tempId);
                 GL42.glBindImageTexture(0, texId, lod, false, 0, GL15.GL_WRITE_ONLY, GL30.GL_RGBA32F);
                 GL20.glUniform1i(uBlHorizontal, 0);
                 GL20.glUniform2i(uBlSrcOrigin, wx0 - sx0, wy0 - sy0);
@@ -376,8 +375,8 @@ public final class SpotShadowEvsm
             probe.counter("evsm.pxideal", (int) pxIdeal);
         }
 
-        GlStateManager._bindTexture(prevTex);
-        GlStateManager._glUseProgram(prevProgram);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
+        GL20.glUseProgram(prevProgram);
         if (prevImgName == 0)
         {
             GL42.glBindImageTexture(0, 0, 0, false, 0, GL15.GL_READ_ONLY, GL30.GL_R32F);
@@ -436,8 +435,8 @@ public final class SpotShadowEvsm
         levels = Math.max(1,
             Integer.numberOfTrailingZeros(Integer.highestOneBit(SpotlightDepthAtlas.getTileSize())) - shift + 1);
 
-        texId = GlStateManager._genTexture();
-        GlStateManager._bindTexture(texId);
+        texId = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
         GL42.glTexStorage2D(GL11.GL_TEXTURE_2D, levels, GL30.GL_RGBA32F,
             SpotlightDepthAtlas.getAtlasWidth() >> shift, SpotlightDepthAtlas.getAtlasHeight() >> shift);
         ShadowAllocLog.log("spot-evsm " + (SpotlightDepthAtlas.getAtlasWidth() >> shift) + "x"
@@ -460,13 +459,13 @@ public final class SpotShadowEvsm
         tempId = allocScratch(side);
         scratchId = allocScratch(side);
 
-        GlStateManager._bindTexture(prevTex);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
     }
 
     private static int allocScratch(int side)
     {
-        int id = GlStateManager._genTexture();
-        GlStateManager._bindTexture(id);
+        int id = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
         GL42.glTexStorage2D(GL11.GL_TEXTURE_2D, 1, GL30.GL_RGBA32F, side, side);
         ShadowAllocLog.log("spot-evsm scratch " + side + "^2 rgba32f", (long) side * side * 16L);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
@@ -530,17 +529,17 @@ public final class SpotShadowEvsm
         ShadowBaker.invalidateOverlays();
         if (texId != 0)
         {
-            GlStateManager._deleteTexture(texId);
+            GL11.glDeleteTextures(texId);
             texId = 0;
         }
         if (tempId != 0)
         {
-            GlStateManager._deleteTexture(tempId);
+            GL11.glDeleteTextures(tempId);
             tempId = 0;
         }
         if (scratchId != 0)
         {
-            GlStateManager._deleteTexture(scratchId);
+            GL11.glDeleteTextures(scratchId);
             scratchId = 0;
         }
         levels = 0;
