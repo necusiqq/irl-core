@@ -1,6 +1,5 @@
 package org.qualet.irl.light.shadow;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL14;
@@ -286,8 +285,8 @@ final class DepthTileAtlas
         int prevTex = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         int prevFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
 
-        int textureId = GlStateManager._genTexture();
-        GlStateManager._bindTexture(textureId);
+        int textureId = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
 
         GL11.glTexImage2D(
             GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT32F,
@@ -323,7 +322,7 @@ final class DepthTileAtlas
         GL11.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFbo);
-        GlStateManager._bindTexture(prevTex);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
 
         return new int[] { textureId, fboId };
     }
@@ -355,7 +354,7 @@ final class DepthTileAtlas
         // skips a future bind when the driver reuses the name.
         if (this.initialized)
         {
-            GlStateManager._deleteTexture(this.glTextureId);
+            GL11.glDeleteTextures(this.glTextureId);
             GL30.glDeleteFramebuffers(this.glFboId);
             this.glTextureId = 0;
             this.glFboId = 0;
@@ -363,7 +362,7 @@ final class DepthTileAtlas
         }
         if (this.staticInitialized)
         {
-            GlStateManager._deleteTexture(this.staticTextureId);
+            GL11.glDeleteTextures(this.staticTextureId);
             GL30.glDeleteFramebuffers(this.staticFboId);
             this.staticTextureId = 0;
             this.staticFboId = 0;
