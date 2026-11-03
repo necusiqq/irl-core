@@ -12,7 +12,7 @@
 // modClientImplementation (remap intermediary -> named) + include (JiJ). intermediary names
 // are MC-version specific, so this artifact pairs with MC 1.21.11 consumers only.
 plugins {
-    id 'fabric-loom' version '1.15.5'
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
     id 'maven-publish'
 }
 
@@ -25,14 +25,14 @@ base {
 
 java {
     // On the 1.21.11 line both consumers run Java 21, so target Java 21.
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
     withSourcesJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-    options.release = 21
+    options.release = 25
 }
 
 repositories {
@@ -55,9 +55,9 @@ repositories {
 dependencies {
     // MC 1.21.11 line. mappings (yarn) let the shadow orchestration compile
     // against named Minecraft; Loom remaps the published jar back to intermediary.
-    minecraft "com.mojang:minecraft:1.21.11"
-    mappings loom.officialMojangMappings()
-    modImplementation "net.fabricmc:fabric-loader:0.16.14"
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    // Minecraft 26.3 is distributed unobfuscated; no mappings dependency is needed.
+    implementation "net.fabricmc:fabric-loader:${loader_version}"
 
     // slf4j: the light/patcher loggers. Bundled by Fabric Loader at runtime, so
     // compileOnly (not bundled into the core jar).
@@ -68,7 +68,7 @@ dependencies {
     // each consumer mod already brings its own Iris, and the core jar must not bundle
     // or hard-depend on it. Same 1.21.11 artifact the redactor uses. 1.10.7 dropped the
     // 2-arg addDynamicSampler; the sampler binding now uses the 4-arg TextureType form.
-    modCompileOnly "maven.modrinth:iris:1.10.7+1.21.11-fabric"
+    compileOnly "maven.modrinth:iris:1.11.7+26.3-fabric"
 }
 
 // Bake the Gradle version into the bundled fabric.mod.json. This jar carries its own
