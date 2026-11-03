@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.ItemBlockRenderTypes;
-import net.minecraft.client.renderer.block.BlockModelShaper;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.util.RandomSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.RenderShape;
@@ -112,8 +114,7 @@ public final class BlockShadowCollector
                     boolean cutout;
                     try
                     {
-                        ChunkSectionLayer layer = ItemBlockRenderTypes.getChunkRenderType(state);
-                        cutout = layer == ChunkSectionLayer.CUTOUT;
+                        cutout = hasCutoutQuads(world, mut, state);
                     }
                     catch (Throwable t)
                     {
@@ -204,8 +205,8 @@ public final class BlockShadowCollector
                 // identically; distinct instances may differ — assume they do.
                 // 1.21.11: BlockModels.getModel returns a BlockStateModel (was
                 // BakedModel pre-1.21.5); the identity compare is unaffected.
-                BlockModelShaper models = Minecraft.getInstance().getModelManager().getBlockModelShaper();
-                return models.getBlockModel(oldState) == models.getBlockModel(newState);
+                BlockStateModelSet models = Minecraft.getInstance().getModelManager().getBlockStateModelSet();
+                return models.get(oldState) == models.get(newState);
             }
             VoxelShape a = shapeOut[0], b = shapeOut[1];
             // Most blocks serve shapes from per-state static caches (full cubes
@@ -217,6 +218,27 @@ public final class BlockShadowCollector
         {
             return false;
         }
+    }
+
+    private static boolean hasCutoutQuads(BlockGetter world, BlockPos pos, BlockState state)
+    {
+        try
+        {
+            BlockStateModel model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(state);
+            List<BlockStateModelPart> parts = new ArrayList<>();
+            model.collectParts(RandomSource.create(state.getSeed(pos)), parts);
+            for (BlockStateModelPart part : parts)
+            {
+                for (BakedQuad quad : part.getQuads(null))
+                {
+                    if (quad.materialInfo().layer() == ChunkSectionLayer.CUTOUT) return true;
+                }
+            }
+        }
+        catch (Throwable ignored)
+        {
+        }
+        return false;
     }
 
     /** Classify one state the way collectForLight would treat it; for
@@ -233,8 +255,7 @@ public final class BlockShadowCollector
             // 1.21.11 cutout classification (see collectForLight): the 1.21.4
             // RenderLayers.getBlockLayer + getCutout()/getCutoutMipped() pair
             // collapses to BlockRenderLayers.getBlockLayer == BlockRenderLayer.CUTOUT.
-            ChunkSectionLayer layer = ItemBlockRenderTypes.getChunkRenderType(state);
-            if (layer == ChunkSectionLayer.CUTOUT)
+            if (hasCutoutQuads(world, pos, state))
             {
                 return KIND_CUTOUT;
             }
