@@ -19,7 +19,7 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
       - name: Migrate main source set
-        run: ./gradlew migrateMappings --mappings "net.minecraft:mappings:1.21.11" --overrideInputsIHaveABackup
+        run: bash ./gradlew migrateMappings --mappings "net.minecraft:mappings:1.21.11" --overrideInputsIHaveABackup
       - name: Commit migrated sources
         run: |
           git config user.name "github-actions[bot]"
