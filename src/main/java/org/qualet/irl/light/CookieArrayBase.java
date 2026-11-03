@@ -7,7 +7,6 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL21;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.stb.STBImage;
-import org.lwjgl.stb.STBImageResize;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
@@ -75,7 +74,7 @@ public abstract class CookieArrayBase
             }
 
             ByteBuffer resized = MemoryUtil.memAlloc(RES * RES);
-            STBImageResize.stbir_resize_uint8(img, w.get(0), h.get(0), 0, resized, RES, RES, 0, 1);
+            resizeGrayBilinear(img, w.get(0), h.get(0), resized);
             flipHorizontal(resized);   // see flipHorizontal: cancels the left-handed X of the spot projection so the gobo isn't mirrored
             return resized;
         }
@@ -86,6 +85,33 @@ public abstract class CookieArrayBase
                 STBImage.stbi_image_free(img);
             }
             MemoryUtil.memFree(rawBuf);
+        }
+    }
+
+    /** Bilinear resampling for the single-channel grayscale cookie image. */
+    private static void resizeGrayBilinear(ByteBuffer src, int srcW, int srcH, ByteBuffer dst)
+    {
+        if (srcW <= 0 || srcH <= 0) throw new IllegalArgumentException("Invalid image dimensions");
+        for (int y = 0; y < RES; y++)
+        {
+            float sy = ((y + 0.5f) * srcH / RES) - 0.5f;
+            int y0 = Math.max(0, Math.min(srcH - 1, (int) Math.floor(sy)));
+            int y1 = Math.min(srcH - 1, y0 + 1);
+            float fy = Math.max(0f, sy - (float) Math.floor(sy));
+            for (int x = 0; x < RES; x++)
+            {
+                float sx = ((x + 0.5f) * srcW / RES) - 0.5f;
+                int x0 = Math.max(0, Math.min(srcW - 1, (int) Math.floor(sx)));
+                int x1 = Math.min(srcW - 1, x0 + 1);
+                float fx = Math.max(0f, sx - (float) Math.floor(sx));
+                float a = Byte.toUnsignedInt(src.get(y0 * srcW + x0));
+                float b = Byte.toUnsignedInt(src.get(y0 * srcW + x1));
+                float c = Byte.toUnsignedInt(src.get(y1 * srcW + x0));
+                float d = Byte.toUnsignedInt(src.get(y1 * srcW + x1));
+                float top = a + (b - a) * fx;
+                float bottom = c + (d - c) * fx;
+                dst.put(y * RES + x, (byte) Math.round(top + (bottom - top) * fy));
+            }
         }
     }
 
