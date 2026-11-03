@@ -1,6 +1,5 @@
 package org.qualet.irl.light.shadow;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -172,7 +171,7 @@ public final class SpotShadowPyramid
         // order last frame's image stores against this frame's re-writes of the same texels (WAW, spec-strict)
         GL42.glMemoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-        GlStateManager._glUseProgram(program);
+        GL20.glUseProgram(program);
         GL20.glUniform1i(uSrcTex, unit);
 
         // All tile rects come from the SpotlightDepthAtlas accessors — the one
@@ -185,7 +184,7 @@ public final class SpotShadowPyramid
         // Per-tile rect: the min/max reduction has no cross-texel support, so
         // the partial rect only needs even alignment in depth coords — each
         // output texel depends on exactly its own 2x2 quad.
-        GlStateManager._bindTexture(depthTex);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, depthTex);
         GL20.glUniform1i(uSrcIsDepth, 1);
         GL20.glUniform1i(uSrcLod, 0);
         bindDstLevel(0);
@@ -215,7 +214,7 @@ public final class SpotShadowPyramid
         // (texelFetch with explicit lod; no feedback loop: image write and sampled level differ).
         // The rect shrinks with the chain: floor/ceil halving covers exactly the
         // outputs whose 2x2 source quad overlaps the previous level's write rect.
-        GlStateManager._bindTexture(texId);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
         GL20.glUniform1i(uSrcIsDepth, 0);
         for (int lod = 1; lod < levels; lod++)
         {
@@ -258,8 +257,8 @@ public final class SpotShadowPyramid
         }
 
         // --- restore ---
-        GlStateManager._bindTexture(prevTex);
-        GlStateManager._glUseProgram(prevProgram);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
+        GL20.glUseProgram(prevProgram);
         if (prevImgName == 0)
         {
             GL42.glBindImageTexture(0, 0, 0, false, 0, GL15.GL_READ_ONLY, GL30.GL_R32F);
@@ -304,8 +303,8 @@ public final class SpotShadowPyramid
         }
 
         int prevTex = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        texId = GlStateManager._genTexture();
-        GlStateManager._bindTexture(texId);
+        texId = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
         // base = atlas/2; levels = log2(tileSize): the deepest lod is one texel per tile — deeper would mix tiles
         levels = Integer.numberOfTrailingZeros(Integer.highestOneBit(SpotlightDepthAtlas.getTileSize()));
         GL42.glTexStorage2D(GL11.GL_TEXTURE_2D, levels, GL30.GL_RG32F,
@@ -320,7 +319,7 @@ public final class SpotShadowPyramid
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_BASE_LEVEL, 0);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, levels - 1);
-        GlStateManager._bindTexture(prevTex);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
     }
 
     /** Bytes of the currently resident pyramid — feeds the preset-flip
@@ -370,7 +369,7 @@ public final class SpotShadowPyramid
         ShadowBaker.invalidateOverlays();
         if (texId != 0)
         {
-            GlStateManager._deleteTexture(texId);
+            GL11.glDeleteTextures(texId);
             texId = 0;
         }
         levels = 0;
