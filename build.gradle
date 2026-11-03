@@ -56,7 +56,7 @@ dependencies {
     // MC 1.21.11 line. mappings (yarn) let the shadow orchestration compile
     // against named Minecraft; Loom remaps the published jar back to intermediary.
     minecraft "com.mojang:minecraft:1.21.11"
-    mappings "net.fabricmc:yarn:1.21.11+build.6:v2"
+    mappings loom.officialMojangMappings()
     modImplementation "net.fabricmc:fabric-loader:0.16.14"
 
     // slf4j: the light/patcher loggers. Bundled by Fabric Loader at runtime, so
