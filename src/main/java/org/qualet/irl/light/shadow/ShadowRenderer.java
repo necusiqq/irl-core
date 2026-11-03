@@ -1,8 +1,5 @@
 package org.qualet.irl.light.shadow;
 
-import com.mojang.blaze3d.opengl.GlTexture;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -20,13 +17,14 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
 import java.util.List;
+import java.util.ArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
-import net.minecraft.client.renderer.block.model.BlockModelPart;
-import net.minecraft.client.renderer.block.model.BlockStateModel;
-import net.minecraft.client.renderer.texture.AbstractTexture;
-import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.block.BlockStateModelSet;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
@@ -843,14 +841,8 @@ public final class ShadowRenderer
     {
         Minecraft mc = Minecraft.getInstance();
         ClientLevel world = mc != null ? mc.level : null;
-        BlockRenderDispatcher brm = mc != null ? mc.getBlockRenderer() : null;
-        if (world == null || brm == null)
-        {
-            releaseCutoutVbo(id);
-            cutoutList.put(id, blocks);
-            cutoutVertCount.put(id, 0);
-            return 0;
-        }
+        BlockStateModelSet models = mc != null ? mc.getModelManager().getBlockStateModelSet() : null;
+        if (world == null || models == null) { releaseCutoutVbo(id); cutoutList.put(id, blocks); cutoutVertCount.put(id, 0); return 0; }
 
         FloatArrayList data = new FloatArrayList();
         // Suppress the mod's per-frame light re-registration while a ModelBlock's
@@ -877,7 +869,7 @@ public final class ShadowRenderer
                     // Real MC tessellation (correct atlas UVs) -> world-space
                     // POSITION+UV triangles in the stride-20 layout this buffer
                     // expects.
-                    float[] tris = captureCutoutBlockTris(world, brm, p, state, cutoutRandom);
+                    float[] tris = captureCutoutBlockTris(models, world, p, state, cutoutRandom);
                     if (tris.length > 0)
                     {
                         data.addElements(data.size(), tris);
@@ -941,42 +933,29 @@ public final class ShadowRenderer
      * alpha-discarding program. Empty array on any failure (no shadow for that
      * block, never a crashed bake).
      */
-    private static float[] captureCutoutBlockTris(ClientLevel world, BlockRenderDispatcher brm,
-                                                  BlockPos pos, BlockState state, RandomSource random)
+    private static float[] captureCutoutBlockTris(BlockStateModelSet models, ClientLevel world, BlockPos pos, BlockState state, RandomSource random)
     {
-        if (world == null || brm == null || state == null)
-        {
-            return EMPTY_TRIS;
-        }
-        try
-        {
-            BlockStateModel model = brm.getBlockModel(state);
-            if (model == null)
-            {
-                return EMPTY_TRIS;
-            }
+        if (models == null || world == null || state == null) return EMPTY_TRIS;
+        try {
+            BlockStateModel model = models.get(state);
+            if (model == null) return EMPTY_TRIS;
             random.setSeed(state.getSeed(pos));
-            List<BlockModelPart> parts = model.collectParts(random);
-            if (parts == null || parts.isEmpty())
-            {
-                return EMPTY_TRIS;
+            List<BlockStateModelPart> parts = new ArrayList<>();
+            model.collectParts(random, parts);
+            FloatArrayList out = new FloatArrayList();
+            float ox = (float)(pos.getX() - currentOriginX), oy = (float)(pos.getY() - currentOriginY), oz = (float)(pos.getZ() - currentOriginZ);
+            for (BlockStateModelPart part : parts) for (BakedQuad quad : part.getQuads(null)) {
+                if (quad.materialInfo().layer() != ChunkSectionLayer.CUTOUT) continue;
+                for (int vertex : new int[]{0,1,2,0,2,3}) {
+                    org.joml.Vector3fc p = quad.position(vertex);
+                    long uv = quad.packedUV(vertex);
+                    out.add(ox+p.x()); out.add(oy+p.y()); out.add(oz+p.z());
+                    out.add(Float.intBitsToFloat((int)uv));
+                    out.add(Float.intBitsToFloat((int)(uv >>> 32)));
+                }
             }
-
-            PoseStack ms = new PoseStack();
-            // Pre-translate to the anchor-relative block origin (world - A): the block
-            // renderer only applies the block's model offset, never its world position.
-            // (int pos) - (double anchor A) -> MatrixStack.translate(double), narrowed
-            // to float inside MC. Same list-instance cache lockstep as the opaque path.
-            ms.translate(pos.getX() - currentOriginX, pos.getY() - currentOriginY, pos.getZ() - currentOriginZ);
-
-            CUTOUT_CAPTURE.reset();
-            brm.renderBatched(state, pos, world, ms, CUTOUT_CAPTURE, true, parts);
-            return CUTOUT_CAPTURE.toTris();
-        }
-        catch (Throwable t)
-        {
-            return EMPTY_TRIS;
-        }
+            return out.toFloatArray();
+        } catch (Throwable t) { return EMPTY_TRIS; }
     }
 
     private static final float[] EMPTY_TRIS = new float[0];
@@ -986,32 +965,10 @@ public final class ShadowRenderer
     /** Raw GL id of the block atlas texture, or 0 if it is not allocated yet. */
     private static int atlasGlId()
     {
-        try
-        {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc == null)
-            {
-                return 0;
-            }
-            AbstractTexture tex = mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS);
-            if (tex == null)
-            {
-                return 0;
-            }
-            com.mojang.blaze3d.textures.GpuTexture gt = tex.getTexture();
-            if (gt instanceof GlTexture)
-            {
-                return ((GlTexture) gt).glId();
-            }
-            return 0;
-        }
-        catch (Throwable t)
-        {
-            return 0;
-        }
+        // TODO: RenderPearl owns backend textures; raw GL ids are not portable in 26.3.
+        return 0;
     }
 
-    /** Free one lamp's cached cutout VBO. */
     private static void releaseCutoutVbo(long id)
     {
         int vbo = cutoutVboId.remove(id);
