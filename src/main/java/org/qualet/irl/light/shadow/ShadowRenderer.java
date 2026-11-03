@@ -1318,6 +1318,12 @@ public final class ShadowRenderer
         }
 
         @Override
+        public VertexConsumer setUv3(float u, float v)
+        {
+            return this;
+        }
+
+        @Override
         public VertexConsumer setColor(int red, int green, int blue, int alpha)
         {
             return this;
