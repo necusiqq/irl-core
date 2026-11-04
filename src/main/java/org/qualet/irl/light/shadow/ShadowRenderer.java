@@ -1312,22 +1312,24 @@ public final class ShadowRenderer
      */
     private static void savePassState()
     {
+        if (!passStateSaved)
+        {
+            // Capture every value before marking a pass active. If a state query
+            // fails, begin*() must not leave inPass true with an incomplete
+            // snapshot that endPass() could later apply to the renderer.
+            savedFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+            GL11.glGetIntegerv(GL11.GL_VIEWPORT, savedViewport);
+            savedScissorEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+            if (savedScissorEnabled)
+            {
+                GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, savedScissorBox);
+            }
+            savedDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+
+            passStateSaved = true;
+        }
+
         inPass = true;
-        if (passStateSaved)
-        {
-            return;
-        }
-
-        savedFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, savedViewport);
-        savedScissorEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
-        if (savedScissorEnabled)
-        {
-            GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, savedScissorBox);
-        }
-        savedDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
-
-        passStateSaved = true;
     }
 
     /** Shared up-vectors for the spot lookAt. lookAt only reads the components,
