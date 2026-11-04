@@ -1920,6 +1920,10 @@ public final class ShadowBaker
      *  Everything re-allocates lazily and first-bakes when shaders return. */
     public static void onShadersDisabled()
     {
+        // Shader teardown also deletes the atlases and scratch GL resources.
+        // Close any interrupted bake first so no pass keeps targeting them.
+        ShadowRenderer.abortCurrentPass();
+
         resetTileState();
         liveIds.clear();
         BlockShadowCache.retainOnly(liveIds);
