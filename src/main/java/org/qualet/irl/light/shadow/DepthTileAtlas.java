@@ -290,6 +290,10 @@ final class DepthTileAtlas
         int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         int[] prevViewport = new int[4];
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, prevViewport);
+        boolean prevScissorEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        int[] prevScissorBox = new int[4];
+        GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, prevScissorBox);
+        boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         double prevClearDepth = GL11.glGetDouble(GL11.GL_DEPTH_CLEAR_VALUE);
 
         int textureId = 0;
@@ -335,6 +339,10 @@ final class DepthTileAtlas
             }
 
             GL11.glViewport(0, 0, this.getAtlasWidth(), this.getAtlasHeight());
+            // A full-atlas clear must not inherit the caller's scissor or a
+            // disabled depth write mask (both affect glClear).
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            GL11.glDepthMask(true);
             GL11.glClearDepth(1.0);
             GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
             complete = true;
