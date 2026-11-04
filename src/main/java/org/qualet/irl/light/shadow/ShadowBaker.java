@@ -1929,6 +1929,7 @@ public final class ShadowBaker
         BlockShadowCache.retainOnly(liveIds);
         ShadowRenderer.retainBlockVbos(liveIds);
         ShadowRenderer.releaseScratch();
+        ShadowRenderer.resetFailedInitForRetry();
         SpotlightDepthAtlas.delete();
         PointDepthAtlas.delete();
     }
