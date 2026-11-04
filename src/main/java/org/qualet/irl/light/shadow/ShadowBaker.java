@@ -426,6 +426,10 @@ public final class ShadowBaker
         }
         catch (RuntimeException | Error failure)
         {
+            // A failure anywhere between begin*() and endPass() must not leak
+            // the active shadow framebuffer or its GL state into the main renderer.
+            ShadowRenderer.abortCurrentPass();
+
             // Includes failures in the batched filters AFTER depth was written.
             spotOverlays.clear();
             pointOverlays.clear();
