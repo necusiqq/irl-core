@@ -2251,16 +2251,22 @@ public final class ShadowBaker
     private static void renderInRangeCone(int filter, float tickDelta)
     {
         ShadowRenderer.beginCasterBatch();
-        for (int s = 0; s < shortCount; s++)
+        try
         {
-            int k = shortIdx[s];
-            if (!casterMatches(filter, oStatic[k]))
+            for (int s = 0; s < shortCount; s++)
             {
-                continue;
+                int k = shortIdx[s];
+                if (!casterMatches(filter, oStatic[k]))
+                {
+                    continue;
+                }
+                ShadowRenderer.emitCaster(ShadowEngine.source(), occ[k], occType[k], tickDelta);
             }
-            ShadowRenderer.emitCaster(ShadowEngine.source(), occ[k], occType[k], tickDelta);
         }
-        ShadowRenderer.endCasterBatch();
+        finally
+        {
+            ShadowRenderer.endCasterBatch();
+        }
     }
 
     /** Render shortlisted occluders of the filtered type whose sphere touches
@@ -2272,20 +2278,26 @@ public final class ShadowBaker
     {
         int bit = 1 << face;
         ShadowRenderer.beginCasterBatch();
-        for (int s = 0; s < shortCount; s++)
+        try
         {
-            if ((shortFaceMask[s] & bit) == 0)
+            for (int s = 0; s < shortCount; s++)
             {
-                continue;
+                if ((shortFaceMask[s] & bit) == 0)
+                {
+                    continue;
+                }
+                int k = shortIdx[s];
+                if (!casterMatches(filter, oStatic[k]))
+                {
+                    continue;
+                }
+                ShadowRenderer.emitCaster(ShadowEngine.source(), occ[k], occType[k], tickDelta);
             }
-            int k = shortIdx[s];
-            if (!casterMatches(filter, oStatic[k]))
-            {
-                continue;
-            }
-            ShadowRenderer.emitCaster(ShadowEngine.source(), occ[k], occType[k], tickDelta);
         }
-        ShadowRenderer.endCasterBatch();
+        finally
+        {
+            ShadowRenderer.endCasterBatch();
+        }
     }
 
     /**
