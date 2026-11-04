@@ -680,20 +680,42 @@ public final class ShadowRenderer
             fb.flip();
 
             int vbo = vboId.get(id);
-            if (vbo == 0)
+            boolean createdVbo = vbo == 0;
+            if (createdVbo)
             {
                 vbo = GL15.glGenBuffers();
-                vboId.put(id, vbo);
             }
-            int prevArrayBuf = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+            boolean uploaded = false;
             try
             {
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-                GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
+                int prevArrayBuf = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+                try
+                {
+                    GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+                    GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
+                    uploaded = true;
+                }
+                finally
+                {
+                    GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+                }
             }
             finally
             {
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+                // Do not publish a newly-created name until its storage upload
+                // succeeds; otherwise a failed first upload leaves an orphaned
+                // buffer that the cache sweep cannot see.
+                if (createdVbo)
+                {
+                    if (uploaded)
+                    {
+                        vboId.put(id, vbo);
+                    }
+                    else if (vbo != 0)
+                    {
+                        GL15.glDeleteBuffers(vbo);
+                    }
+                }
             }
 
             vboList.put(id, blocks);
@@ -919,20 +941,41 @@ public final class ShadowRenderer
             fb.flip();
 
             int vbo = cutoutVboId.get(id);
-            if (vbo == 0)
+            boolean createdVbo = vbo == 0;
+            if (createdVbo)
             {
                 vbo = GL15.glGenBuffers();
-                cutoutVboId.put(id, vbo);
             }
-            int prevArrayBuf = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+            boolean uploaded = false;
             try
             {
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-                GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
+                int prevArrayBuf = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+                try
+                {
+                    GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+                    GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
+                    uploaded = true;
+                }
+                finally
+                {
+                    GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+                }
             }
             finally
             {
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+                // Keep failed first uploads out of the cache and release their
+                // temporary GL name so cache eviction cannot miss the buffer.
+                if (createdVbo)
+                {
+                    if (uploaded)
+                    {
+                        cutoutVboId.put(id, vbo);
+                    }
+                    else if (vbo != 0)
+                    {
+                        GL15.glDeleteBuffers(vbo);
+                    }
+                }
             }
 
             cutoutList.put(id, blocks);
