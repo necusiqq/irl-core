@@ -367,7 +367,7 @@ public final class ShadowRenderer
      *  view/proj + bound FBO. */
     public static void endCasterBatch()
     {
-        ShadowBakeState.setBaking(false);
+        ShadowBakeState.setBaking(wasBaking);
     }
 
     /** Draw the caster silhouette triangles accumulated this pass (if any) with the
@@ -849,6 +849,7 @@ public final class ShadowRenderer
         // Suppress the mod's per-frame light re-registration while a ModelBlock's
         // real render runs inside the capture (same gate the opaque path relies on
         // implicitly via the caster batch). Cleared in the finally.
+        boolean wasBaking = ShadowBakeState.isBaking();
         ShadowBakeState.setBaking(true);
         try
         {
@@ -1143,24 +1144,36 @@ public final class ShadowRenderer
             return;
         }
 
-        // Draw the caster silhouettes accumulated in this pass before restoring
-        // state (they share the pass's currentView/currentProj, still set here).
-        flushCasters();
-
-        GL11.glDepthMask(savedDepthMask);
-
-        if (savedScissorEnabled)
+        try
         {
-            GL11.glScissor(savedScissorBox[0], savedScissorBox[1], savedScissorBox[2], savedScissorBox[3]);
+            // Draw the caster silhouettes before restoring state: they share this
+            // pass's currentView/currentProj. Even if the draw fails, the outer
+            // framebuffer/viewport/scissor state must still be restored.
+            flushCasters();
         }
-        else
+        finally
         {
-            GL11.glDisable(GL11.GL_SCISSOR_TEST);
-        }
-        GL11.glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, savedFbo);
+            try
+            {
+                GL11.glDepthMask(savedDepthMask);
 
-        inPass = false;
+                if (savedScissorEnabled)
+                {
+                    GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                    GL11.glScissor(savedScissorBox[0], savedScissorBox[1], savedScissorBox[2], savedScissorBox[3]);
+                }
+                else
+                {
+                    GL11.glDisable(GL11.GL_SCISSOR_TEST);
+                }
+                GL11.glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, savedFbo);
+            }
+            finally
+            {
+                inPass = false;
+            }
+        }
     }
 
     /**
