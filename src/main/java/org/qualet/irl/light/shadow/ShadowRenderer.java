@@ -143,6 +143,11 @@ public final class ShadowRenderer
      *  one per bake. */
     public static void beginBake()
     {
+        // A previous bake should have closed every pass. If a caller escaped
+        // its normal failure handler, restore that pass before re-arming the
+        // per-bake state snapshot.
+        abortPass();
+
         passStateSaved = false;
         // Defensive: drop any unflushed pass triangles (endPass clears every pass).
         casterAccum.clear();
