@@ -1,5 +1,6 @@
 package org.qualet.irl.light.shadow;
 
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL14;
@@ -410,7 +411,7 @@ final class DepthTileAtlas
         // skips a future bind when the driver reuses the name.
         if (this.initialized)
         {
-            GL11.glDeleteTextures(this.glTextureId);
+            GlStateManager._deleteTexture(this.glTextureId);
             GL30.glDeleteFramebuffers(this.glFboId);
             this.glTextureId = 0;
             this.glFboId = 0;
@@ -418,7 +419,7 @@ final class DepthTileAtlas
         }
         if (this.staticInitialized)
         {
-            GL11.glDeleteTextures(this.staticTextureId);
+            GlStateManager._deleteTexture(this.staticTextureId);
             GL30.glDeleteFramebuffers(this.staticFboId);
             this.staticTextureId = 0;
             this.staticFboId = 0;
