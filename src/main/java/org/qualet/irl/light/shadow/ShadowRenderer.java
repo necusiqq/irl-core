@@ -1349,6 +1349,15 @@ public final class ShadowRenderer
     }
 
     /**
+     * Abort the active shadow pass after an exception escapes the bake pipeline.
+     * Restore the original caller state without flushing partially collected casters.
+     */
+    public static void abortCurrentPass()
+    {
+        abortPass();
+    }
+
+    /**
      * Abort a pass whose begin/setup failed before endPass.
      * Restore the original caller state without flushing partially collected casters.
      */
