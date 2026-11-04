@@ -23,6 +23,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.block.BlockStateModelSet;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
@@ -911,9 +913,15 @@ public final class ShadowRenderer
                 cutoutVboId.put(id, vbo);
             }
             int prevArrayBuf = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+            try
+            {
+                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+                GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
+            }
+            finally
+            {
+                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+            }
 
             cutoutList.put(id, blocks);
             cutoutVertCount.put(id, verts);
@@ -981,8 +989,29 @@ public final class ShadowRenderer
     /** Raw GL id of the block atlas texture, or 0 if it is not allocated yet. */
     private static int atlasGlId()
     {
-        // TODO: RenderPearl owns backend textures; raw GL ids are not portable in 26.3.
-        return 0;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null)
+        {
+            return 0;
+        }
+
+        // The shadow backend below uses raw OpenGL calls, so only an OpenGL
+        // RenderPearl texture can be sampled here. Vulkan textures deliberately
+        // return 0 rather than being treated as GL object names.
+        try
+        {
+            net.minecraft.client.renderer.texture.AbstractTexture atlas =
+                mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS);
+            if (atlas == null || atlas.getTexture() == null || atlas.getTexture().isClosed())
+            {
+                return 0;
+            }
+            return atlas.getTexture() instanceof GlTexture glTexture ? glTexture.glId() : 0;
+        }
+        catch (Throwable t)
+        {
+            return 0;
+        }
     }
 
     private static void releaseCutoutVbo(long id)
