@@ -284,7 +284,10 @@ final class DepthTileAtlas
     private int[] createAtlas()
     {
         int prevTex = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        int prevFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        // Iris may keep distinct READ and DRAW framebuffer bindings. Binding
+        // GL_FRAMEBUFFER below changes both, so preserve them independently.
+        int prevDrawFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         int[] prevViewport = new int[4];
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, prevViewport);
         double prevClearDepth = GL11.glGetDouble(GL11.GL_DEPTH_CLEAR_VALUE);
@@ -356,7 +359,14 @@ final class DepthTileAtlas
                 {
                     try
                     {
-                        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFbo);
+                        try
+                        {
+                            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
+                        }
+                        finally
+                        {
+                            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                        }
                     }
                     finally
                     {
