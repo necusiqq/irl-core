@@ -230,9 +230,23 @@ public final class BlockShadowCollector
             model.collectParts(RandomSource.create(state.getSeed(pos)), parts);
             for (BlockStateModelPart part : parts)
             {
-                for (BakedQuad quad : part.getQuads(null))
+                // CUTOUT geometry can live in directional buckets as well as
+                // the unculled bucket. Keep classification in sync with the
+                // shadow tessellator or directional-only models fall back to
+                // VoxelShape silhouettes and lose their textured alpha mask.
+                for (net.minecraft.core.Direction direction : new net.minecraft.core.Direction[]{
+                        null,
+                        net.minecraft.core.Direction.DOWN,
+                        net.minecraft.core.Direction.UP,
+                        net.minecraft.core.Direction.NORTH,
+                        net.minecraft.core.Direction.SOUTH,
+                        net.minecraft.core.Direction.WEST,
+                        net.minecraft.core.Direction.EAST})
                 {
-                    if (quad.materialInfo().layer() == ChunkSectionLayer.CUTOUT) return true;
+                    for (BakedQuad quad : part.getQuads(direction))
+                    {
+                        if (quad.materialInfo().layer() == ChunkSectionLayer.CUTOUT) return true;
+                    }
                 }
             }
         }
