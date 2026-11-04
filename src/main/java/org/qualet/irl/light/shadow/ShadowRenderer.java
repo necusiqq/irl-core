@@ -1131,7 +1131,9 @@ public final class ShadowRenderer
         GL20.glCompileShader(sh);
         if (GL20.glGetShaderi(sh, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE)
         {
-            throw new IllegalStateException("compile: " + GL20.glGetShaderInfoLog(sh));
+            String log = GL20.glGetShaderInfoLog(sh);
+            GL20.glDeleteShader(sh);
+            throw new IllegalStateException("compile: " + log);
         }
         return sh;
     }
