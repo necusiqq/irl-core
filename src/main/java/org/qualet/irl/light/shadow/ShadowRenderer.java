@@ -1067,13 +1067,13 @@ public final class ShadowRenderer
         try
         {
             vs = compile(GL20.GL_VERTEX_SHADER,
-                "#version 150\\n" +
-                "in vec3 aPos;\\n" +
-                "uniform mat4 uViewProj;\\n" +
-                "void main() { gl_Position = uViewProj * vec4(aPos, 1.0); }\\n");
+                "#version 150\n" +
+                "in vec3 aPos;\n" +
+                "uniform mat4 uViewProj;\n" +
+                "void main() { gl_Position = uViewProj * vec4(aPos, 1.0); }\n");
             fs = compile(GL20.GL_FRAGMENT_SHADER,
-                "#version 150\\n" +
-                "void main() {}\\n");
+                "#version 150\n" +
+                "void main() {}\n");
 
             prog = GL20.glCreateProgram();
             GL20.glAttachShader(prog, vs);
@@ -1094,17 +1094,17 @@ public final class ShadowRenderer
             // Cutout depth program: positions + atlas UVs, discards transparent
             // texels so light passes through the holes in the texture.
             cvs = compile(GL20.GL_VERTEX_SHADER,
-                "#version 150\\n" +
-                "in vec3 aPos;\\n" +
-                "in vec2 aUV;\\n" +
-                "uniform mat4 uViewProj;\\n" +
-                "out vec2 vUV;\\n" +
-                "void main() { vUV = aUV; gl_Position = uViewProj * vec4(aPos, 1.0); }\\n");
+                "#version 150\n" +
+                "in vec3 aPos;\n" +
+                "in vec2 aUV;\n" +
+                "uniform mat4 uViewProj;\n" +
+                "out vec2 vUV;\n" +
+                "void main() { vUV = aUV; gl_Position = uViewProj * vec4(aPos, 1.0); }\n");
             cfs = compile(GL20.GL_FRAGMENT_SHADER,
-                "#version 150\\n" +
-                "in vec2 vUV;\\n" +
-                "uniform sampler2D uAtlas;\\n" +
-                "void main() { if (texture(uAtlas, vUV).a < 0.5) discard; }\\n");
+                "#version 150\n" +
+                "in vec2 vUV;\n" +
+                "uniform sampler2D uAtlas;\n" +
+                "void main() { if (texture(uAtlas, vUV).a < 0.5) discard; }\n");
 
             cprog = GL20.glCreateProgram();
             GL20.glAttachShader(cprog, cvs);
