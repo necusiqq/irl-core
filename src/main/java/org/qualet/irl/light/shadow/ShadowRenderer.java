@@ -1215,17 +1215,24 @@ public final class ShadowRenderer
 
             newCutoutVao = GL30.glGenVertexArrays();
 
-            program = prog;
-            prog = 0;
-            uViewProjLoc = GL20.glGetUniformLocation(program, "uViewProj");
-            vao = newVao;
-            newVao = 0;
+            // Resolve every uniform location before publishing any GL object to
+            // the static fields. If a query fails, the catch below still owns and
+            // deletes every temporary program and VAO.
+            int newUViewProjLoc = GL20.glGetUniformLocation(prog, "uViewProj");
+            int newCutoutViewProjLoc = GL20.glGetUniformLocation(cprog, "uViewProj");
+            int newCutoutAtlasLoc = GL20.glGetUniformLocation(cprog, "uAtlas");
 
+            program = prog;
+            uViewProjLoc = newUViewProjLoc;
+            vao = newVao;
             cutoutProgram = cprog;
-            cprog = 0;
-            cutoutViewProjLoc = GL20.glGetUniformLocation(cutoutProgram, "uViewProj");
-            cutoutAtlasLoc = GL20.glGetUniformLocation(cutoutProgram, "uAtlas");
+            cutoutViewProjLoc = newCutoutViewProjLoc;
+            cutoutAtlasLoc = newCutoutAtlasLoc;
             cutoutVao = newCutoutVao;
+
+            prog = 0;
+            newVao = 0;
+            cprog = 0;
             newCutoutVao = 0;
         }
         catch (Throwable t)
