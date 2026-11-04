@@ -465,6 +465,13 @@ public final class ShadowBaker
         if (overlayWorld != world)
         {
             resetTileState();
+            // BlockShadowCache is keyed by light id + quantized position, not
+            // ClientLevel identity. Drain it on world changes so a light at the
+            // same position in a new world cannot reuse the previous world's
+            // block list or its corresponding GPU VBOs.
+            liveIds.clear();
+            BlockShadowCache.retainOnly(liveIds);
+            ShadowRenderer.retainBlockVbos(liveIds);
             overlayWorld = world;
         }
         if (world == null || cameraPos == null)
