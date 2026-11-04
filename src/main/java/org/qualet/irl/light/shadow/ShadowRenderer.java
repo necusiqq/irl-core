@@ -732,7 +732,7 @@ public final class ShadowRenderer
     // --- Cutout block depth bake (textured, alpha-tested) ---------------------
 
     /**
-     * Draw a light's cutout blocks from their real MC-tessellated textured geometry
+     * Draw a light's cutout blocks from baked model-part quads
      * (see {@link #captureCutoutBlockTris}), sampling the block atlas and discarding
      * transparent texels so light passes through (lacy leaf / grate / glass-pane
      * shadows). Per-light VBO cached like the opaque path. Called from
@@ -837,9 +837,10 @@ public final class ShadowRenderer
     }
 
     /** Build (or rebuild) a light's cutout VBO (interleaved POSITION(3)+UV(2),
-     *  stride 20) from its cutout entries, tessellated by MC's real block renderer
-     *  ({@link #captureCutoutBlockTris}) in absolute world coordinates with correct
-     *  atlas UVs. Returns the vertex count (0 if there is no cutout geometry). */
+     *  stride 20) from cutout model-part quads and their baked atlas UVs,
+     *  translated into light-relative world coordinates by
+     *  {@link #captureCutoutBlockTris}. Returns the vertex count (0 if there is
+     *  no cutout geometry). */
     private static int buildCutoutVbo(long id, List<BlockShadowEntry> blocks)
     {
         Minecraft mc = Minecraft.getInstance();
