@@ -367,7 +367,7 @@ public final class ShadowRenderer
      *  view/proj + bound FBO. */
     public static void endCasterBatch()
     {
-        ShadowBakeState.setBaking(wasBaking);
+        ShadowBakeState.setBaking(false);
     }
 
     /** Draw the caster silhouette triangles accumulated this pass (if any) with the
@@ -885,7 +885,7 @@ public final class ShadowRenderer
         }
         finally
         {
-            ShadowBakeState.setBaking(false);
+            ShadowBakeState.setBaking(wasBaking);
         }
 
         int floats = data.size();
