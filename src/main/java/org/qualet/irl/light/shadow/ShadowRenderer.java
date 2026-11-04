@@ -686,9 +686,15 @@ public final class ShadowRenderer
                 vboId.put(id, vbo);
             }
             int prevArrayBuf = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+            try
+            {
+                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+                GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
+            }
+            finally
+            {
+                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
+            }
 
             vboList.put(id, blocks);
             vboVertCount.put(id, vertCount);
