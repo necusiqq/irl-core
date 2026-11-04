@@ -1056,18 +1056,26 @@ public final class ShadowRenderer
     private static void initGl()
     {
         glInit = true;
+        int vs = 0;
+        int fs = 0;
+        int prog = 0;
+        int cvs = 0;
+        int cfs = 0;
+        int cprog = 0;
+        int newVao = 0;
+        int newCutoutVao = 0;
         try
         {
-            int vs = compile(GL20.GL_VERTEX_SHADER,
-                "#version 150\n" +
-                "in vec3 aPos;\n" +
-                "uniform mat4 uViewProj;\n" +
-                "void main() { gl_Position = uViewProj * vec4(aPos, 1.0); }\n");
-            int fs = compile(GL20.GL_FRAGMENT_SHADER,
-                "#version 150\n" +
-                "void main() {}\n");
+            vs = compile(GL20.GL_VERTEX_SHADER,
+                "#version 150\\n" +
+                "in vec3 aPos;\\n" +
+                "uniform mat4 uViewProj;\\n" +
+                "void main() { gl_Position = uViewProj * vec4(aPos, 1.0); }\\n");
+            fs = compile(GL20.GL_FRAGMENT_SHADER,
+                "#version 150\\n" +
+                "void main() {}\\n");
 
-            int prog = GL20.glCreateProgram();
+            prog = GL20.glCreateProgram();
             GL20.glAttachShader(prog, vs);
             GL20.glAttachShader(prog, fs);
             GL20.glBindAttribLocation(prog, 0, "aPos");
@@ -1077,28 +1085,28 @@ public final class ShadowRenderer
                 throw new IllegalStateException("link: " + GL20.glGetProgramInfoLog(prog));
             }
             GL20.glDeleteShader(vs);
+            vs = 0;
             GL20.glDeleteShader(fs);
+            fs = 0;
 
-            program = prog;
-            uViewProjLoc = GL20.glGetUniformLocation(prog, "uViewProj");
-            vao = GL30.glGenVertexArrays();
+            newVao = GL30.glGenVertexArrays();
 
             // Cutout depth program: positions + atlas UVs, discards transparent
             // texels so light passes through the holes in the texture.
-            int cvs = compile(GL20.GL_VERTEX_SHADER,
-                "#version 150\n" +
-                "in vec3 aPos;\n" +
-                "in vec2 aUV;\n" +
-                "uniform mat4 uViewProj;\n" +
-                "out vec2 vUV;\n" +
-                "void main() { vUV = aUV; gl_Position = uViewProj * vec4(aPos, 1.0); }\n");
-            int cfs = compile(GL20.GL_FRAGMENT_SHADER,
-                "#version 150\n" +
-                "in vec2 vUV;\n" +
-                "uniform sampler2D uAtlas;\n" +
-                "void main() { if (texture(uAtlas, vUV).a < 0.5) discard; }\n");
+            cvs = compile(GL20.GL_VERTEX_SHADER,
+                "#version 150\\n" +
+                "in vec3 aPos;\\n" +
+                "in vec2 aUV;\\n" +
+                "uniform mat4 uViewProj;\\n" +
+                "out vec2 vUV;\\n" +
+                "void main() { vUV = aUV; gl_Position = uViewProj * vec4(aPos, 1.0); }\\n");
+            cfs = compile(GL20.GL_FRAGMENT_SHADER,
+                "#version 150\\n" +
+                "in vec2 vUV;\\n" +
+                "uniform sampler2D uAtlas;\\n" +
+                "void main() { if (texture(uAtlas, vUV).a < 0.5) discard; }\\n");
 
-            int cprog = GL20.glCreateProgram();
+            cprog = GL20.glCreateProgram();
             GL20.glAttachShader(cprog, cvs);
             GL20.glAttachShader(cprog, cfs);
             GL20.glBindAttribLocation(cprog, 0, "aPos");
@@ -1109,15 +1117,35 @@ public final class ShadowRenderer
                 throw new IllegalStateException("cutout link: " + GL20.glGetProgramInfoLog(cprog));
             }
             GL20.glDeleteShader(cvs);
+            cvs = 0;
             GL20.glDeleteShader(cfs);
+            cfs = 0;
+
+            newCutoutVao = GL30.glGenVertexArrays();
+
+            program = prog;
+            prog = 0;
+            uViewProjLoc = GL20.glGetUniformLocation(program, "uViewProj");
+            vao = newVao;
+            newVao = 0;
 
             cutoutProgram = cprog;
-            cutoutViewProjLoc = GL20.glGetUniformLocation(cprog, "uViewProj");
-            cutoutAtlasLoc = GL20.glGetUniformLocation(cprog, "uAtlas");
-            cutoutVao = GL30.glGenVertexArrays();
+            cprog = 0;
+            cutoutViewProjLoc = GL20.glGetUniformLocation(cutoutProgram, "uViewProj");
+            cutoutAtlasLoc = GL20.glGetUniformLocation(cutoutProgram, "uAtlas");
+            cutoutVao = newCutoutVao;
+            newCutoutVao = 0;
         }
         catch (Throwable t)
         {
+            if (vs != 0) { GL20.glDeleteShader(vs); }
+            if (fs != 0) { GL20.glDeleteShader(fs); }
+            if (cvs != 0) { GL20.glDeleteShader(cvs); }
+            if (cfs != 0) { GL20.glDeleteShader(cfs); }
+            if (prog != 0) { GL20.glDeleteProgram(prog); }
+            if (cprog != 0) { GL20.glDeleteProgram(cprog); }
+            if (newVao != 0) { GL30.glDeleteVertexArrays(newVao); }
+            if (newCutoutVao != 0) { GL30.glDeleteVertexArrays(newCutoutVao); }
             glBroken = true;
             System.err.println("[irl-core] shadow depth program init failed: " + t);
             t.printStackTrace();
