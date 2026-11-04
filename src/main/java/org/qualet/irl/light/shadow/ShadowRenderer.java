@@ -508,6 +508,18 @@ public final class ShadowRenderer
         }
     }
 
+    /** Allow a later shaderpack activation to retry a failed first-time GL init.
+     *  Successful programs are retained across shader toggles; a failed init,
+     *  after transactional cleanup, owns no published GL objects and is retryable. */
+    public static void resetFailedInitForRetry()
+    {
+        if (glBroken && program == 0 && cutoutProgram == 0 && vao == 0 && cutoutVao == 0)
+        {
+            glInit = false;
+            glBroken = false;
+        }
+    }
+
     // --- Block-shadow depth bake (raw-GL) -------------------------------------
 
     /** Shared POSITION depth program (opaque blocks + casters) + its uniform/VAO,
