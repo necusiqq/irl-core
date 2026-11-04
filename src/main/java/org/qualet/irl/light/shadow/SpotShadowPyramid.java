@@ -370,7 +370,7 @@ public final class SpotShadowPyramid
         ShadowBaker.invalidateOverlays();
         if (texId != 0)
         {
-            GL11.glDeleteTextures(texId);
+            GlStateManager._deleteTexture(texId);
             texId = 0;
         }
         levels = 0;
