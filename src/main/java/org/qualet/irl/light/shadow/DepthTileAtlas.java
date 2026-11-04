@@ -284,47 +284,103 @@ final class DepthTileAtlas
     {
         int prevTex = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         int prevFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
-
-        int textureId = GL11.glGenTextures();
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
-
-        GL11.glTexImage2D(
-            GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT32F,
-            this.getAtlasWidth(), this.getAtlasHeight(), 0,
-            GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (ByteBuffer) null
-        );
-
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_BASE_LEVEL, 0);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, 0);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_MODE, GL11.GL_NONE);
-
-        int fboId = GL30.glGenFramebuffers();
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fboId);
-        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, textureId, 0);
-        GL11.glDrawBuffer(GL11.GL_NONE);
-        GL11.glReadBuffer(GL11.GL_NONE);
-
-        int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
-        if (status != GL30.GL_FRAMEBUFFER_COMPLETE)
-        {
-            throw new IllegalStateException("DepthTileAtlas(" + this.debugName + ") FBO incomplete: 0x" + Integer.toHexString(status));
-        }
-
         int[] prevViewport = new int[4];
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, prevViewport);
-        GL11.glViewport(0, 0, this.getAtlasWidth(), this.getAtlasHeight());
-        GL11.glClearDepth(1.0);
-        GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
-        GL11.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+        double prevClearDepth = GL11.glGetDouble(GL11.GL_DEPTH_CLEAR_VALUE);
 
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFbo);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
+        int textureId = 0;
+        int fboId = 0;
+        boolean complete = false;
+        try
+        {
+            textureId = GL11.glGenTextures();
+            if (textureId == 0)
+            {
+                throw new IllegalStateException("DepthTileAtlas(" + this.debugName + "): texture allocation returned 0");
+            }
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
 
-        return new int[] { textureId, fboId };
+            GL11.glTexImage2D(
+                GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT32F,
+                this.getAtlasWidth(), this.getAtlasHeight(), 0,
+                GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (ByteBuffer) null
+            );
+
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_BASE_LEVEL, 0);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, 0);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_MODE, GL11.GL_NONE);
+
+            fboId = GL30.glGenFramebuffers();
+            if (fboId == 0)
+            {
+                throw new IllegalStateException("DepthTileAtlas(" + this.debugName + "): framebuffer allocation returned 0");
+            }
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fboId);
+            GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, textureId, 0);
+            GL11.glDrawBuffer(GL11.GL_NONE);
+            GL11.glReadBuffer(GL11.GL_NONE);
+
+            int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+            if (status != GL30.GL_FRAMEBUFFER_COMPLETE)
+            {
+                throw new IllegalStateException("DepthTileAtlas(" + this.debugName + ") FBO incomplete: 0x" + Integer.toHexString(status));
+            }
+
+            GL11.glViewport(0, 0, this.getAtlasWidth(), this.getAtlasHeight());
+            GL11.glClearDepth(1.0);
+            GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+            complete = true;
+            return new int[] { textureId, fboId };
+        }
+        finally
+        {
+            // Restore caller state even when allocation, attachment, validation,
+            // or the initial clear fails. Delete partial objects only after the
+            // temporary FBO has been unbound.
+            try
+            {
+                GL11.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+            }
+            finally
+            {
+                try
+                {
+                    GL11.glClearDepth(prevClearDepth);
+                }
+                finally
+                {
+                    try
+                    {
+                        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFbo);
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
+                        }
+                        finally
+                        {
+                            if (!complete)
+                            {
+                                if (fboId != 0)
+                                {
+                                    GL30.glDeleteFramebuffers(fboId);
+                                }
+                                if (textureId != 0)
+                                {
+                                    GL11.glDeleteTextures(textureId);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /** Bytes of the currently resident depth layers (0 when nothing is
