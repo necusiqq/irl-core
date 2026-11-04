@@ -172,7 +172,7 @@ public final class ShadowRenderer
         float ey = (float) (lpy - currentOriginY);
         float ez = (float) (lpz - currentOriginZ);
 
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, SpotlightDepthAtlas.getFboId(toStatic));
+        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, SpotlightDepthAtlas.getFboId(toStatic));
         int px = SpotlightDepthAtlas.tilePixelX(tile);
         int py = SpotlightDepthAtlas.tilePixelY(tile);
         int ts = SpotlightDepthAtlas.tileSizePx(tile);
@@ -251,7 +251,7 @@ public final class ShadowRenderer
         float ey = (float) (lpy - currentOriginY);
         float ez = (float) (lpz - currentOriginZ);
 
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, PointDepthAtlas.getFboId(toStatic));
+        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, PointDepthAtlas.getFboId(toStatic));
         int px = PointDepthAtlas.facePixelX(block, face);
         int py = PointDepthAtlas.facePixelY(block, face);
         int fs = PointDepthAtlas.faceSizePx(block);
@@ -1223,7 +1223,7 @@ public final class ShadowRenderer
                     GL11.glDisable(GL11.GL_SCISSOR_TEST);
                 }
                 GL11.glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
-                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, savedFbo);
+                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, savedFbo);
             }
             finally
             {
@@ -1245,7 +1245,7 @@ public final class ShadowRenderer
             return;
         }
 
-        savedFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        savedFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, savedViewport);
         savedScissorEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
         if (savedScissorEnabled)
