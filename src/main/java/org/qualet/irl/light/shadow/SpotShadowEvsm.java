@@ -530,17 +530,17 @@ public final class SpotShadowEvsm
         ShadowBaker.invalidateOverlays();
         if (texId != 0)
         {
-            GL11.glDeleteTextures(texId);
+            GlStateManager._deleteTexture(texId);
             texId = 0;
         }
         if (tempId != 0)
         {
-            GL11.glDeleteTextures(tempId);
+            GlStateManager._deleteTexture(tempId);
             tempId = 0;
         }
         if (scratchId != 0)
         {
-            GL11.glDeleteTextures(scratchId);
+            GlStateManager._deleteTexture(scratchId);
             scratchId = 0;
         }
         levels = 0;
