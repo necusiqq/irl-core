@@ -945,14 +945,28 @@ public final class ShadowRenderer
             model.collectParts(random, parts);
             FloatArrayList out = new FloatArrayList();
             float ox = (float)(pos.getX() - currentOriginX), oy = (float)(pos.getY() - currentOriginY), oz = (float)(pos.getZ() - currentOriginZ);
-            for (BlockStateModelPart part : parts) for (BakedQuad quad : part.getQuads(null)) {
-                if (quad.materialInfo().layer() != ChunkSectionLayer.CUTOUT) continue;
-                for (int vertex : new int[]{0,1,2,0,2,3}) {
-                    org.joml.Vector3fc p = quad.position(vertex);
-                    long uv = quad.packedUV(vertex);
-                    out.add(ox+p.x()); out.add(oy+p.y()); out.add(oz+p.z());
-                    out.add(Float.intBitsToFloat((int)uv));
-                    out.add(Float.intBitsToFloat((int)(uv >>> 32)));
+            for (BlockStateModelPart part : parts) {
+                // null = unculled quads; directional buckets contain the faces
+                // culled against neighbouring blocks. Capture both or block
+                // shadows lose the majority of their visible side surfaces.
+                for (net.minecraft.core.Direction direction : new net.minecraft.core.Direction[]{
+                        null,
+                        net.minecraft.core.Direction.DOWN,
+                        net.minecraft.core.Direction.UP,
+                        net.minecraft.core.Direction.NORTH,
+                        net.minecraft.core.Direction.SOUTH,
+                        net.minecraft.core.Direction.WEST,
+                        net.minecraft.core.Direction.EAST}) {
+                    for (BakedQuad quad : part.getQuads(direction)) {
+                        if (quad.materialInfo().layer() != ChunkSectionLayer.CUTOUT) continue;
+                        for (int vertex : new int[]{0,1,2,0,2,3}) {
+                            org.joml.Vector3fc p = quad.position(vertex);
+                            long uv = quad.packedUV(vertex);
+                            out.add(ox+p.x()); out.add(oy+p.y()); out.add(oz+p.z());
+                            out.add(Float.intBitsToFloat((int)uv));
+                            out.add(Float.intBitsToFloat((int)(uv >>> 32)));
+                        }
+                    }
                 }
             }
             return out.toFloatArray();
