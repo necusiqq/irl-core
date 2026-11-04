@@ -451,14 +451,20 @@ public final class ShadowRenderer
         }
         finally
         {
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
-            GL30.glBindVertexArray(prevVao);
-            GL20.glUseProgram(prevProgram);
-            GL11.glDepthMask(prevDepthMask);
-            GL11.glDepthFunc(prevDepthFunc);
-            if (prevDepthTest) { GL11.glEnable(GL11.GL_DEPTH_TEST); } else { GL11.glDisable(GL11.GL_DEPTH_TEST); }
-            if (prevCull) { GL11.glEnable(GL11.GL_CULL_FACE); } else { GL11.glDisable(GL11.GL_CULL_FACE); }
-            casterAccum.clear();
+            try
+            {
+                restoreGlStateStep(() -> GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf));
+                restoreGlStateStep(() -> GL30.glBindVertexArray(prevVao));
+                restoreGlStateStep(() -> GL20.glUseProgram(prevProgram));
+                restoreGlStateStep(() -> GL11.glDepthMask(prevDepthMask));
+                restoreGlStateStep(() -> GL11.glDepthFunc(prevDepthFunc));
+                restoreGlStateStep(() -> { if (prevDepthTest) { GL11.glEnable(GL11.GL_DEPTH_TEST); } else { GL11.glDisable(GL11.GL_DEPTH_TEST); } });
+                restoreGlStateStep(() -> { if (prevCull) { GL11.glEnable(GL11.GL_CULL_FACE); } else { GL11.glDisable(GL11.GL_CULL_FACE); } });
+            }
+            finally
+            {
+                casterAccum.clear();
+            }
         }
     }
 
@@ -517,6 +523,26 @@ public final class ShadowRenderer
     private static boolean cutoutErrorLogged = false;
 
     private static boolean blockErrorLogged = false;
+    private static boolean stateRestoreErrorLogged = false;
+
+    /** Attempt every state restore independently: one failed GL call must not
+     *  prevent the remaining caller state from being put back. */
+    private static void restoreGlStateStep(Runnable restore)
+    {
+        try
+        {
+            restore.run();
+        }
+        catch (Throwable t)
+        {
+            if (!stateRestoreErrorLogged)
+            {
+                stateRestoreErrorLogged = true;
+                System.err.println("[irl-core] shadow GL state restore failed: " + t);
+                t.printStackTrace();
+            }
+        }
+    }
 
     /**
      * Render a light's block occluders into the currently-bound depth FBO, between
@@ -619,14 +645,14 @@ public final class ShadowRenderer
         }
         finally
         {
-            // Restore exactly what we changed (actual values -> matches MC's cache).
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
-            GL30.glBindVertexArray(prevVao);
-            GL20.glUseProgram(prevProgram);
-            GL11.glDepthMask(prevDepthMask);
-            GL11.glDepthFunc(prevDepthFunc);
-            if (prevDepthTest) { GL11.glEnable(GL11.GL_DEPTH_TEST); } else { GL11.glDisable(GL11.GL_DEPTH_TEST); }
-            if (prevCull) { GL11.glEnable(GL11.GL_CULL_FACE); } else { GL11.glDisable(GL11.GL_CULL_FACE); }
+            // Restore each captured bit even if an earlier GL call fails.
+            restoreGlStateStep(() -> GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf));
+            restoreGlStateStep(() -> GL30.glBindVertexArray(prevVao));
+            restoreGlStateStep(() -> GL20.glUseProgram(prevProgram));
+            restoreGlStateStep(() -> GL11.glDepthMask(prevDepthMask));
+            restoreGlStateStep(() -> GL11.glDepthFunc(prevDepthFunc));
+            restoreGlStateStep(() -> { if (prevDepthTest) { GL11.glEnable(GL11.GL_DEPTH_TEST); } else { GL11.glDisable(GL11.GL_DEPTH_TEST); } });
+            restoreGlStateStep(() -> { if (prevCull) { GL11.glEnable(GL11.GL_CULL_FACE); } else { GL11.glDisable(GL11.GL_CULL_FACE); } });
         }
     }
 
@@ -855,17 +881,17 @@ public final class ShadowRenderer
         }
         finally
         {
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex0);
-            GL33.glBindSampler(0, prevSampler0);
-            GL13.glActiveTexture(prevActiveTex);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
-            GL30.glBindVertexArray(prevVao);
-            GL20.glUseProgram(prevProgram);
-            GL11.glDepthMask(prevDepthMask);
-            GL11.glDepthFunc(prevDepthFunc);
-            if (prevDepthTest) { GL11.glEnable(GL11.GL_DEPTH_TEST); } else { GL11.glDisable(GL11.GL_DEPTH_TEST); }
-            if (prevCull) { GL11.glEnable(GL11.GL_CULL_FACE); } else { GL11.glDisable(GL11.GL_CULL_FACE); }
-            if (prevBlend) { GL11.glEnable(GL11.GL_BLEND); } else { GL11.glDisable(GL11.GL_BLEND); }
+            restoreGlStateStep(() -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex0));
+            restoreGlStateStep(() -> GL33.glBindSampler(0, prevSampler0));
+            restoreGlStateStep(() -> GL13.glActiveTexture(prevActiveTex));
+            restoreGlStateStep(() -> GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf));
+            restoreGlStateStep(() -> GL30.glBindVertexArray(prevVao));
+            restoreGlStateStep(() -> GL20.glUseProgram(prevProgram));
+            restoreGlStateStep(() -> GL11.glDepthMask(prevDepthMask));
+            restoreGlStateStep(() -> GL11.glDepthFunc(prevDepthFunc));
+            restoreGlStateStep(() -> { if (prevDepthTest) { GL11.glEnable(GL11.GL_DEPTH_TEST); } else { GL11.glDisable(GL11.GL_DEPTH_TEST); } });
+            restoreGlStateStep(() -> { if (prevCull) { GL11.glEnable(GL11.GL_CULL_FACE); } else { GL11.glDisable(GL11.GL_CULL_FACE); } });
+            restoreGlStateStep(() -> { if (prevBlend) { GL11.glEnable(GL11.GL_BLEND); } else { GL11.glDisable(GL11.GL_BLEND); } });
         }
     }
 
@@ -1284,19 +1310,18 @@ public final class ShadowRenderer
         {
             try
             {
-                GL11.glDepthMask(savedDepthMask);
-
+                restoreGlStateStep(() -> GL11.glDepthMask(savedDepthMask));
                 if (savedScissorEnabled)
                 {
-                    GL11.glEnable(GL11.GL_SCISSOR_TEST);
-                    GL11.glScissor(savedScissorBox[0], savedScissorBox[1], savedScissorBox[2], savedScissorBox[3]);
+                    restoreGlStateStep(() -> GL11.glEnable(GL11.GL_SCISSOR_TEST));
+                    restoreGlStateStep(() -> GL11.glScissor(savedScissorBox[0], savedScissorBox[1], savedScissorBox[2], savedScissorBox[3]));
                 }
                 else
                 {
-                    GL11.glDisable(GL11.GL_SCISSOR_TEST);
+                    restoreGlStateStep(() -> GL11.glDisable(GL11.GL_SCISSOR_TEST));
                 }
-                GL11.glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
-                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, savedFbo);
+                restoreGlStateStep(() -> GL11.glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]));
+                restoreGlStateStep(() -> GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, savedFbo));
             }
             finally
             {
