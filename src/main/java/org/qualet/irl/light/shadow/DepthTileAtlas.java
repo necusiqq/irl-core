@@ -367,32 +367,54 @@ final class DepthTileAtlas
                 {
                     try
                     {
-                        try
-                        {
-                            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
-                        }
-                        finally
-                        {
-                            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
-                        }
+                        GL11.glDepthMask(prevDepthMask);
                     }
                     finally
                     {
                         try
                         {
-                            GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
+                            if (prevScissorEnabled)
+                            {
+                                GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                            }
+                            else
+                            {
+                                GL11.glDisable(GL11.GL_SCISSOR_TEST);
+                            }
+                            GL11.glScissor(prevScissorBox[0], prevScissorBox[1], prevScissorBox[2], prevScissorBox[3]);
                         }
                         finally
                         {
-                            if (!complete)
+                            try
                             {
-                                if (fboId != 0)
+                                try
                                 {
-                                    GL30.glDeleteFramebuffers(fboId);
+                                    GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
                                 }
-                                if (textureId != 0)
+                                finally
                                 {
-                                    GL11.glDeleteTextures(textureId);
+                                    GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                                }
+                            }
+                            finally
+                            {
+                                try
+                                {
+                                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex);
+                                }
+                                finally
+                                {
+                                    if (!complete)
+                                    {
+                                        if (fboId != 0)
+                                        {
+                                            GL30.glDeleteFramebuffers(fboId);
+                                        }
+                                        if (textureId != 0)
+                                        {
+                                            GL11.glDeleteTextures(textureId);
+                                        }
+                                    }
                                 }
                             }
                         }
