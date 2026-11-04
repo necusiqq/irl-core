@@ -13,6 +13,7 @@ import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL33;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
@@ -25,7 +26,7 @@ import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import com.mojang.renderpearl.backend.opengl.GlTexture;
-import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.renderpearl.backend.opengl.GlSampler;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
@@ -764,7 +765,8 @@ public final class ShadowRenderer
         int vbo = cutoutVboId.get(id);
 
         int atlas = atlasGlId();
-        if (atlas == 0)
+        int atlasSampler = atlasSamplerGlId();
+        if (atlas == 0 || atlasSampler == 0)
         {
             return; // atlas texture not ready this frame
         }
@@ -783,6 +785,7 @@ public final class ShadowRenderer
         int prevActiveTex = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         int prevTex0 = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        int prevSampler0 = GL11.glGetInteger(GL33.GL_SAMPLER_BINDING);
 
         try
         {
@@ -801,6 +804,7 @@ public final class ShadowRenderer
                 GL20.glUniformMatrix4fv(cutoutViewProjLoc, false, fb);
             }
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, atlas);
+            GL33.glBindSampler(0, atlasSampler);
             GL20.glUniform1i(cutoutAtlasLoc, 0);
 
             GL30.glBindVertexArray(cutoutVao);
@@ -824,6 +828,7 @@ public final class ShadowRenderer
         finally
         {
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTex0);
+            GL33.glBindSampler(0, prevSampler0);
             GL13.glActiveTexture(prevActiveTex);
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevArrayBuf);
             GL30.glBindVertexArray(prevVao);
@@ -984,8 +989,23 @@ public final class ShadowRenderer
     }
 
     private static final float[] EMPTY_TRIS = new float[0];
-    /** Shared cutout-block capture consumer (render thread is single-threaded). */
-    private static final Capture CUTOUT_CAPTURE = new Capture();
+    /** Raw OpenGL sampler id for the block atlas, or 0 if unavailable. */
+    private static int atlasSamplerGlId()
+    {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return 0;
+        try
+        {
+            net.minecraft.client.renderer.texture.AbstractTexture atlas =
+                mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS);
+            if (atlas == null || atlas.getSampler() == null || atlas.getSampler().isClosed()) return 0;
+            return atlas.getSampler() instanceof GlSampler glSampler ? glSampler.getId() : 0;
+        }
+        catch (Throwable t)
+        {
+            return 0;
+        }
+    }
 
     /** Raw GL id of the block atlas texture, or 0 if it is not allocated yet. */
     private static int atlasGlId()
@@ -1241,137 +1261,5 @@ public final class ShadowRenderer
         return Math.abs(dy) > 0.99f ? UP_Z : UP_Y;
     }
 
-    // --- Position(+UV) recording VertexConsumer (cutout block capture) ---------
 
-    /**
-     * Records committed vertices as (x, y, z, u, v) and triangulates the implied
-     * QUADS (every 4 vertices -> 2 triangles). Positions arrive already transformed
-     * by {@link BlockRenderDispatcher#renderBatched}'s matrix, so no matrix is applied
-     * here; only POSITION + UV are kept, every other element is dropped. A vertex is
-     * committed when the next {@link #addVertex(float, float, float)} starts, or when
-     * {@link #toTris} flushes the last. This is the block-cutout subset of the
-     * per-mod capture queue (entities are captured mod-side and arrive as POSITION
-     * float[] through the {@link RawOccluderBatch} seam instead).
-     */
-    private static final class Capture implements VertexConsumer
-    {
-        private final FloatArrayList verts = new FloatArrayList(2048);
-        private float cx, cy, cz, cu, cv;
-        private boolean pending;
-
-        void reset()
-        {
-            verts.clear();
-            pending = false;
-        }
-
-        private void commit()
-        {
-            if (pending)
-            {
-                verts.add(cx);
-                verts.add(cy);
-                verts.add(cz);
-                verts.add(cu);
-                verts.add(cv);
-                pending = false;
-            }
-        }
-
-        /** Flush the last pending vertex and triangulate to POSITION+UV (stride 5). */
-        float[] toTris()
-        {
-            commit();
-            int n = verts.size() / 5;       // committed vertices
-            int quads = n / 4;              // 4 verts per quad
-            if (quads == 0)
-            {
-                return EMPTY_TRIS;
-            }
-            float[] out = new float[quads * 6 * 5];
-            float[] v = verts.elements();
-            int w = 0;
-            for (int q = 0; q < quads; q++)
-            {
-                int b = q * 4 * 5; // base float index of this quad's first vertex
-                // triangle (0,1,2) then (0,2,3)
-                w = put(out, w, v, b, 0);
-                w = put(out, w, v, b, 1);
-                w = put(out, w, v, b, 2);
-                w = put(out, w, v, b, 0);
-                w = put(out, w, v, b, 2);
-                w = put(out, w, v, b, 3);
-            }
-            return out;
-        }
-
-        private static int put(float[] out, int w, float[] v, int quadBase, int corner)
-        {
-            int s = quadBase + corner * 5;
-            out[w++] = v[s];
-            out[w++] = v[s + 1];
-            out[w++] = v[s + 2];
-            out[w++] = v[s + 3];
-            out[w++] = v[s + 4];
-            return w;
-        }
-
-        @Override
-        public VertexConsumer addVertex(float x, float y, float z)
-        {
-            commit();
-            cx = x; cy = y; cz = z; cu = 0f; cv = 0f;
-            pending = true;
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setUv(float u, float v)
-        {
-            cu = u; cv = v;
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setUv3(float u, float v)
-        {
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setColor(int red, int green, int blue, int alpha)
-        {
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setColor(int argb)
-        {
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setUv1(int u, int v)
-        {
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setUv2(int u, int v)
-        {
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setNormal(float x, float y, float z)
-        {
-            return this;
-        }
-
-        @Override
-        public VertexConsumer setLineWidth(float width)
-        {
-            return this;
-        }
-    }
 }
