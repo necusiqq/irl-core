@@ -4,7 +4,251 @@ import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.l
+import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.objects.ObjectIterator;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL33;
+import org.lwjgl.system.MemoryUtil;
+
+import java.nio.FloatBuffer;
+import java.util.List;
+import java.util.ArrayList;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.block.BlockStateModelSet;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
+import com.mojang.renderpearl.backend.opengl.GlSampler;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.state.BlockState;
+
+/**
+ * Bakes spot/point shadow depth maps into the per-light atlas tiles / cube faces.
+ *
+ * <p><b>MC 1.21.11 line — occluders rasterized with a self-contained raw-GL depth
+ * backend.</b> The 1.21.4 baker drew occluders with MC's {@code VertexBuffer} +
+ * {@code RenderSystem} matrices + a vanilla entity {@code Immediate}, all removed
+ * by the 1.21.5 RenderPipeline rework and the 1.21.9 EntityRenderState rewrite.
+ * Rather than chase MC's {@code GpuDevice}/{@code RenderPass} model, the bake now
+ * owns two tiny GLSL depth programs (a POSITION-only {@code gl_Position =
+ * uViewProj * pos} program for opaque blocks + entity casters, and a POSITION+UV
+ * program that samples the block atlas and discards transparent texels for cutout
+ * blocks) plus VAOs and per-light VBO caches, and draws straight into the bound
+ * depth FBO. This is independent of MC's render pipeline, so it is robust across
+ * MC versions.</p>
+ *
+ * <p><b>The orchestration, filtering, and caster seam are UNCHANGED from the
+ * 1.21.4 line</b> — only the drawing layer swapped. The pass lifecycle
+ * ({@link #beginBake}/{@link #beginSpot}/{@link #beginPointFace}/{@link #endPass}),
+ * the caster seam ({@link #beginCasterBatch}/{@link #emitCaster}/{@link #endCasterBatch}
+ * over {@link ShadowCasterSource}/{@link OccluderSink}/{@link OccluderBatch}), the
+ * per-light dirty VBO cache keyed by {@code LightRegistry.id}, and the
+ * spot/point/MSM cube-view math all read exactly as before; {@link ShadowBaker}
+ * drives them identically.</p>
+ *
+ * <p><b>Caster geometry.</b> On this line the {@link OccluderBatch} backend is
+ * {@link RawOccluderBatch}: a per-mod {@link ShadowCasterSource#emitOccluder}
+ * downcasts it and {@code append}s the caster's REAL model silhouette as world-space
+ * POSITION triangles (produced by the mod's own capture path — the 1.21.11
+ * equivalent of the removed immediate entity draw). The pass accumulates all its
+ * casters and flushes them once with a raw {@code glDrawArrays} in {@link #endPass}.
+ * Block occluders flow through the separate {@link #renderBlocksDepth} helper.</p>
+ *
+ * <p>GL-state safety: every global bit each draw touches (program, VAO, array
+ * buffer, depth test/func/mask, cull, active texture + its 2D binding) is
+ * snapshotted with {@code glGet*} and restored to its captured value, and the
+ * FBO/viewport/scissor are restored by {@link #endPass}. MC's {@code GlStateManager}
+ * caches the FBO binding but NOT program/VAO/buffer; restoring the actual binding
+ * keeps MC's cache consistent.</p>
+ */
+public final class ShadowRenderer
+{
+    private static final float NEAR = 0.05f;
+
+    private static boolean inPass = false;
+    /** True once {@link #savePassState} has snapshotted the original GL state this
+     *  bake. {@link #beginBake} clears it so the next bake re-grabs the (possibly
+     *  different) state, while passes within one bake share the single snapshot
+     *  instead of re-running the glGet* sync points. */
+    private static boolean passStateSaved = false;
+
+    private static int savedFbo;
+    private static final int[] savedViewport = new int[4];
+    private static boolean savedScissorEnabled;
+    private static final int[] savedScissorBox = new int[4];
+    private static boolean savedDepthMask;
+
+    /** The current light's view/projection (world space), combined into
+     *  {@link #viewProj} for the depth programs' uViewProj uniform. The block +
+     *  caster draws upload this directly, NEVER MC's live modelview (which no
+     *  longer exists on the hot path here), so a caster can never corrupt them. */
+    private static final Matrix4f currentView = new Matrix4f();
+    private static final Matrix4f currentProj = new Matrix4f();
+    private static final Matrix4f viewProj = new Matrix4f();
+
+    /** Per-pass light-relative bake anchor A = round((float) lightPos). The pass view
+     *  eye is L - A and EVERY caster vertex (opaque VBO, cutout VBO, entity accum)
+     *  enters as worldPos - A subtracted in DOUBLE before its float cast, so
+     *  viewProj*(v-A) with eye L-A == R*(v-L): A cancels exactly, the stored depth
+     *  contract is unchanged, the 1e5 float cancellation is removed. round((float)
+     *  lightPos) == BlockShadowCache's block snap == round(getX), so this shared
+     *  anchor stays in lockstep with the per-light cached block/cutout VBO. Exposed so
+     *  the mods' entity arm (editor OccluderGeometryCapturer) subtracts the SAME A. */
+    private static double currentOriginX, currentOriginY, currentOriginZ;
+    public static double currentOriginX() { return currentOriginX; }
+    public static double currentOriginY() { return currentOriginY; }
+    public static double currentOriginZ() { return currentOriginZ; }
+
+    // --- Reused matrix scratch (T1.3) ----------------------------------------
+    // The spot projection depends only on (fov, far) and the point projection only
+    // on far, but a bake runs many passes (every spot tile, every point face) —
+    // recomputing perspective()'s trig per pass is wasted work when consecutive
+    // lamps share parameters. These hold the last-built matrix + the params it was
+    // built for; each begin*() copies the cached matrix into currentProj, rebuilding
+    // only when params change (currentProj itself can't cache it — the other light
+    // kind overwrites currentProj).
+    private static final Matrix4f spotProj = new Matrix4f();
+    private static float spotProjFov = Float.NaN;
+    private static float spotProjFar = Float.NaN;
+    private static final Matrix4f pointProj = new Matrix4f();
+    private static float pointProjFar = Float.NaN;
+
+    /** Reused raw-GL batch handed to {@link ShadowCasterSource#emitOccluder} (the
+     *  render thread is single-threaded, so one instance is safe). It appends the
+     *  source's world-space POSITION triangles into {@link #casterAccum}. */
+    private static final RawOccluderBatch casterBatch = new RawOccluderBatch();
+
+    private static long casterFailures;
+
+    /** Monotonic failure stamp: a recovered partial draw must never be cached. */
+    public static long casterFailures() { return casterFailures; }
+
+    private ShadowRenderer()
+    {}
+
+    /** Call once at the start of a bake, before any begin*()/endPass(). Arms a
+     *  fresh snapshot of the MC/Iris GL state on the first pass of this bake
+     *  (see {@link #savePassState}), so the per-pass glGet* stalls collapse to
+     *  one per bake. */
+    public static void beginBake()
+    {
+        passStateSaved = false;
+        // Defensive: drop any unflushed pass triangles (endPass clears every pass).
+        casterAccum.clear();
+    }
+
+    /**
+     * Begin a spot depth pass into the live ({@code toStatic} false) or static
+     * ({@code toStatic} true) atlas tile. {@code clear} false keeps the tile's
+     * current depth — used for the dynamic-caster overlay drawn on top of a
+     * static base just restored by {@link SpotlightDepthAtlas#copyStaticToLive}.
+     */
+    public static void beginSpot(int tile,
+                                 double lpx, double lpy, double lpz,
+                                 float ldx, float ldy, float ldz,
+                                 float range, float outerDeg,
+                                 boolean toStatic, boolean clear)
+    {
+        savePassState();
+        try
+        {
+
+            // Light-relative bake anchor A = round((float) lightPos) (== BlockShadowCache's
+            // block snap), and the pass view eye at L - A carried in float (the sub-block
+            // residual). ldx/ldy/ldz stay float — direction is translation-invariant.
+            currentOriginX = Math.round((float) lpx);
+            currentOriginY = Math.round((float) lpy);
+            currentOriginZ = Math.round((float) lpz);
+            float ex = (float) (lpx - currentOriginX);
+            float ey = (float) (lpy - currentOriginY);
+            float ez = (float) (lpz - currentOriginZ);
+
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, SpotlightDepthAtlas.getFboId(toStatic));
+            int px = SpotlightDepthAtlas.tilePixelX(tile);
+            int py = SpotlightDepthAtlas.tilePixelY(tile);
+            int ts = SpotlightDepthAtlas.tileSizePx(tile);
+            GL11.glViewport(px, py, ts, ts);
+            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+            GL11.glScissor(px, py, ts, ts);
+            if (clear)
+            {
+                GL11.glDepthMask(true);
+                GL11.glClearDepth(1.0);
+                GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+            }
+
+            float fovDeg = Math.max(outerDeg, 1.0f);
+            float far = Math.max(range, NEAR + 0.1f);
+            if (fovDeg != spotProjFov || far != spotProjFar)
+            {
+                spotProj.identity().perspective((float) Math.toRadians(fovDeg), 1.0f, NEAR, far);
+                spotProjFov = fovDeg;
+                spotProjFar = far;
+            }
+            currentProj.set(spotProj);
+
+            Vector3f up = pickStableUp(ldy);
+            currentView.identity().lookAt(
+                ex, ey, ez,
+                ex + ldx, ey + ldy, ez + ldz,
+                up.x, up.y, up.z
+            );
+        }
+        catch (RuntimeException | Error t)
+        {
+            abortPass();
+            throw t;
+        }
+
+    }
+
+    /** Shrink the current spot tile's scissor to a partial sub-rect (the 1.1.3
+     *  dyn-rect / partial-tile bake path). Call between {@link #beginSpot} (which
+     *  set the full-tile scissor; the viewport/NDC mapping stays full-tile) and
+     *  the caster draws; {@link #endPass} restores the caller's scissor. */
+    public static void restrictScissorSpot(int tile, int localX, int localY, int w, int h)
+    {
+        int px = SpotlightDepthAtlas.tilePixelX(tile);
+        int py = SpotlightDepthAtlas.tilePixelY(tile);
+        GL11.glScissor(px + localX, py + localY, w, h);
+    }
+
+    /** DIAGNOSTIC (-Dirlite.dynRectDebug=true): clear the CURRENTLY SCISSORED
+     *  depth region to the near plane so the partial-tile dyn rect shows up in
+     *  the world as a fully-shadowed block. Call right after
+     *  {@link #restrictScissorSpot}. */
+    public static void debugFillScissoredDepth()
+    {
+        GL11.glClearDepth(0.0);
+        GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+        GL11.glClearDepth(1.0);
+    }
+
+    /**
+     * Begin a point-cube face depth pass into the live or static atlas (see
+     * {@link #beginSpot} for the {@code toStatic}/{@code clear} semantics; the
+     * static base of a whole block is restored by
+     * {@link PointDepthAtlas#copyStaticToLive}). {@code block} is the GLOBAL
+     * point-atlas block index; each of the 6 cube faces renders into its own
+     * pixel sub-rect of that block's atlas region.
+     */
+    public static void beginPointFace(int block, int face,
+                                      double lpx, double lpy, double lpz,
+                                      float radius,
+                                      boolean toStatic, boolean clear)
+    {
+        savePassState();
         try
         {
 
@@ -1105,7 +1349,7 @@ import it.unimi.dsi.fastutil.l
     }
 
     /**
-     * Abort a pass whose begin/setup or caller-side work failed before endPass.
+     * Abort a pass whose begin/setup failed before endPass.
      * Restore the original caller state without flushing partially collected casters.
      */
     private static void abortPass()
