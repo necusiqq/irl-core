@@ -1159,7 +1159,6 @@ public final class ShadowRenderer
     /** Lazily compile the depth programs + create the shared VAOs. */
     private static void initGl()
     {
-        glInit = true;
         int vs = 0;
         int fs = 0;
         int prog = 0;
@@ -1180,6 +1179,10 @@ public final class ShadowRenderer
                 "void main() {}\n");
 
             prog = GL20.glCreateProgram();
+            if (prog == 0)
+            {
+                throw new IllegalStateException("depth program allocation returned 0");
+            }
             GL20.glAttachShader(prog, vs);
             GL20.glAttachShader(prog, fs);
             GL20.glBindAttribLocation(prog, 0, "aPos");
@@ -1194,6 +1197,10 @@ public final class ShadowRenderer
             fs = 0;
 
             newVao = GL30.glGenVertexArrays();
+            if (newVao == 0)
+            {
+                throw new IllegalStateException("depth VAO allocation returned 0");
+            }
 
             // Cutout depth program: positions + atlas UVs, discards transparent
             // texels so light passes through the holes in the texture.
@@ -1211,6 +1218,10 @@ public final class ShadowRenderer
                 "void main() { if (texture(uAtlas, vUV).a < 0.5) discard; }\n");
 
             cprog = GL20.glCreateProgram();
+            if (cprog == 0)
+            {
+                throw new IllegalStateException("cutout program allocation returned 0");
+            }
             GL20.glAttachShader(cprog, cvs);
             GL20.glAttachShader(cprog, cfs);
             GL20.glBindAttribLocation(cprog, 0, "aPos");
@@ -1226,6 +1237,10 @@ public final class ShadowRenderer
             cfs = 0;
 
             newCutoutVao = GL30.glGenVertexArrays();
+            if (newCutoutVao == 0)
+            {
+                throw new IllegalStateException("cutout VAO allocation returned 0");
+            }
 
             // Resolve every uniform location before publishing any GL object to
             // the static fields. If a query fails, the catch below still owns and
@@ -1246,6 +1261,7 @@ public final class ShadowRenderer
             newVao = 0;
             cprog = 0;
             newCutoutVao = 0;
+            glInit = true;
         }
         catch (Throwable t)
         {
@@ -1266,6 +1282,10 @@ public final class ShadowRenderer
     private static int compile(int type, String src)
     {
         int sh = GL20.glCreateShader(type);
+        if (sh == 0)
+        {
+            throw new IllegalStateException("shader allocation returned 0");
+        }
         GL20.glShaderSource(sh, src);
         GL20.glCompileShader(sh);
         if (GL20.glGetShaderi(sh, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE)
